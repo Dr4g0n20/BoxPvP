@@ -69,6 +69,9 @@ public class ShopManager implements Listener {
 
     private static class Holder implements InventoryHolder {
         final boolean seller;
+        int page = 0;
+        /** For every slot: which shop entry its button belongs to, or -1. */
+        int[] map = new int[0];
 
         Holder(boolean seller) {
             this.seller = seller;
@@ -79,6 +82,9 @@ public class ShopManager implements Listener {
             return null;
         }
     }
+
+    private static final int PER_ROW = 9;
+    private static final int PER_PAGE = 18; // two rows of items (each with a button row under it) per page
 
     private final BoxPvP plugin;
     private final List<SellEntry> sell = new ArrayList<SellEntry>();
@@ -201,7 +207,8 @@ public class ShopManager implements Listener {
         if (e.getHand() != EquipmentSlot.HAND) {
             return;
         }
-        open(e.getPlayer(), type.equals("seller"));
+        // Buyer NPC = players SELL to it (sell menu). Seller NPC = players BUY from it (buy menu).
+        open(e.getPlayer(), type.equals("buyer"));
     }
 
     @EventHandler(priority = EventPriority.HIGH)
@@ -212,45 +219,123 @@ public class ShopManager implements Listener {
     }
 
     // ------------------------------------------------------------ GUI
+    //
+    // Layout: item row, button row directly under it, (repeat once more), then a control row.
+    // Every slot that isn't an item/button/control is filled with a grey glass pane, and all clicks
+    // are cancelled, so nothing can be put into or taken out of the menu.
+
+    private int total(boolean seller) {
+        return seller ? sell.size() : buy.size();
+    }
+
+    private int pairs(boolean seller) {
+        int n = total(seller);
+        return Math.max(1, Math.min(2, (n + PER_ROW - 1) / PER_ROW));
+    }
+
+    private int pages(boolean seller) {
+        return Math.max(1, (total(seller) + PER_PAGE - 1) / PER_PAGE);
+    }
 
     public void open(Player p, boolean seller) {
+        // Here "seller" means the SELL menu (the player sells), opened by the Buyer NPC.
         String title = Util.color(plugin.getConfig().getString(
-                seller ? "shop.seller-title" : "shop.buyer-title", seller ? "&6Seller" : "&bBuyer"));
+                seller ? "shop.sell-menu-title" : "shop.buy-menu-title",
+                seller ? "&6&lSell Resources" : "&b&lSupply Shop"));
         if (title.length() > 32) {
             title = title.substring(0, 32);
         }
-        Inventory inv = Bukkit.createInventory(new Holder(seller), 54, title);
-        render(inv, p, seller);
+        Holder h = new Holder(seller);
+        Inventory inv = Bukkit.createInventory(h, (pairs(seller) * 2 + 1) * 9, title);
+        render(inv, h, p);
         p.openInventory(inv);
     }
 
-    private void render(Inventory inv, Player p, boolean seller) {
-        inv.clear();
-        if (seller) {
-            int slot = 0;
-            for (SellEntry se : sell) {
-                if (slot >= 45) {
-                    break;
+    private void render(Inventory inv, Holder h, Player p) {
+        boolean seller = h.seller;
+        int size = inv.getSize();
+        h.map = new int[size];
+        Arrays.fill(h.map, -1);
+
+        ItemStack pane = pane();
+        for (int i = 0; i < size; i++) {
+            inv.setItem(i, pane);
+        }
+
+        PlayerStats stats = plugin.stats().get(p);
+        int total = total(seller);
+        int start = h.page * PER_PAGE;
+        int shown = Math.max(0, Math.min(PER_PAGE, total - start));
+        int pairs = pairs(seller);
+
+        for (int row = 0; row < pairs; row++) {
+            int inRow = Math.max(0, Math.min(PER_ROW, shown - row * PER_ROW));
+            int offset = (PER_ROW - inRow) / 2; // centre partial rows
+            for (int c = 0; c < inRow; c++) {
+                int idx = start + row * PER_ROW + c;
+                int itemSlot = row * 18 + offset + c;
+                int buttonSlot = itemSlot + 9;
+                if (seller) {
+                    SellEntry se = sell.get(idx);
+                    inv.setItem(itemSlot, sellIcon(se, p));
+                    inv.setItem(buttonSlot, sellButton(se, p));
+                } else {
+                    BuyEntry be = buy.get(idx);
+                    inv.setItem(itemSlot, buyIcon(be));
+                    inv.setItem(buttonSlot, buyButton(be, stats));
                 }
-                inv.setItem(slot++, sellIcon(se, p));
-            }
-            long total = 0;
-            for (SellEntry se : sell) {
-                total += count(p, se.key) * se.price;
-            }
-            inv.setItem(49, icon(Material.EMERALD, "&a&lSell All",
-                    "&7Sells every sellable resource", "&7in your inventory.", "",
-                    "&7You would receive: &6" + Util.fmt(total) + " coins"));
-        } else {
-            int slot = 0;
-            for (BuyEntry be : buy) {
-                if (slot >= 45) {
-                    break;
-                }
-                inv.setItem(slot++, buyIcon(be));
+                h.map[buttonSlot] = idx;
             }
         }
-        inv.setItem(45, icon(Material.GOLD_NUGGET, "&6Your coins: &e" + Util.fmt(plugin.stats().get(p).coins)));
+
+        int b = pairs * 18; // control row
+        int pages = pages(seller);
+        if (h.page > 0) {
+            inv.setItem(b, icon(Material.ARROW, "&e<< Previous page"));
+        }
+        inv.setItem(b + 3, icon(Material.GOLD_NUGGET, "&6Your coins: &e" + Util.fmt(stats.coins)));
+        if (seller) {
+            long gain = 0;
+            for (SellEntry se : sell) {
+                gain += count(p, se.key) * se.price;
+            }
+            inv.setItem(b + 4, icon(Material.EMERALD, "&a&lSell All",
+                    "&7Sells every sellable resource", "&7in your inventory.", "",
+                    "&7You would receive: &6" + Util.fmt(gain) + " coins"));
+        } else {
+            inv.setItem(b + 4, icon(Material.BOOK, "&b&lHow to buy",
+                    "&7Click the green button under", "&7an item to buy it."));
+        }
+        if (pages > 1) {
+            inv.setItem(b + 5, icon(Material.PAPER, "&fPage &e" + (h.page + 1) + "&f/&e" + pages));
+        }
+        if (h.page < pages - 1) {
+            inv.setItem(b + 8, icon(Material.ARROW, "&eNext page >>"));
+        }
+    }
+
+    @SuppressWarnings("deprecation")
+    private ItemStack pane() {
+        ItemStack it = new ItemStack(Material.STAINED_GLASS_PANE, 1, (short) 7);
+        ItemMeta m = it.getItemMeta();
+        m.setDisplayName(" ");
+        it.setItemMeta(m);
+        return it;
+    }
+
+    /** Green (good) or red (bad) clay button. */
+    @SuppressWarnings("deprecation")
+    private ItemStack button(boolean good, String name, String... lore) {
+        ItemStack it = new ItemStack(Material.STAINED_CLAY, 1, (short) (good ? 5 : 14));
+        ItemMeta m = it.getItemMeta();
+        m.setDisplayName(Util.color(name));
+        List<String> l = new ArrayList<String>();
+        for (String s : lore) {
+            l.add(Util.color(s));
+        }
+        m.setLore(l);
+        it.setItemMeta(m);
+        return it;
     }
 
     private ItemStack sellIcon(SellEntry se, Player p) {
@@ -259,12 +344,19 @@ public class ShopManager implements Listener {
         m.setDisplayName(Util.color("&f" + se.display()));
         m.setLore(Arrays.asList(
                 Util.color("&7Sells for: &6" + Util.fmt(se.price) + " coins &7each"),
-                Util.color("&7You have: &f" + count(p, se.key)),
-                "",
-                Util.color("&eClick: &7sell 1"),
-                Util.color("&eShift-click: &7sell all")));
+                Util.color("&7You have: &f" + count(p, se.key))));
         it.setItemMeta(m);
         return it;
+    }
+
+    private ItemStack sellButton(SellEntry se, Player p) {
+        int have = count(p, se.key);
+        if (have <= 0) {
+            return button(false, "&c&lNOTHING TO SELL", "&7You don't have any " + se.display() + ".");
+        }
+        return button(true, "&a&lSELL",
+                "&eLeft-click: &7sell 1 &8(&6+" + Util.fmt(se.price) + "&8)",
+                "&eRight / Shift-click: &7sell all " + have + " &8(&6+" + Util.fmt(se.price * have) + "&8)");
     }
 
     private ItemStack buyIcon(BuyEntry be) {
@@ -278,11 +370,17 @@ public class ShopManager implements Listener {
         if (be.stack.getAmount() > 1) {
             lore.add(Util.color("&7You get: &f" + be.stack.getAmount()));
         }
-        lore.add("");
-        lore.add(Util.color("&eClick to buy"));
         m.setLore(lore);
         it.setItemMeta(m);
         return it;
+    }
+
+    private ItemStack buyButton(BuyEntry be, PlayerStats stats) {
+        if (stats.coins >= be.price) {
+            return button(true, "&a&lBUY", "&7Price: &6" + Util.fmt(be.price) + " coins", "&eClick to purchase");
+        }
+        return button(false, "&c&lNOT ENOUGH COINS",
+                "&7Costs &6" + Util.fmt(be.price) + "&7, you have &e" + Util.fmt(stats.coins));
     }
 
     private ItemStack icon(Material mat, String name, String... lore) {
@@ -304,7 +402,7 @@ public class ShopManager implements Listener {
         if (!(top.getHolder() instanceof Holder)) {
             return;
         }
-        e.setCancelled(true);
+        e.setCancelled(true); // nothing can be moved in or out of the menu (or shuffled in your own inventory)
         if (!(e.getWhoClicked() instanceof Player)) {
             return;
         }
@@ -313,17 +411,33 @@ public class ShopManager implements Listener {
             return;
         }
         Player p = (Player) e.getWhoClicked();
-        boolean seller = ((Holder) top.getHolder()).seller;
-        if (seller) {
-            if (slot == 49) {
+        Holder h = (Holder) top.getHolder();
+
+        int controlRow = (top.getSize() / 9 - 1) * 9;
+        if (slot >= controlRow) {
+            int col = slot - controlRow;
+            if (col == 0 && h.page > 0) {
+                h.page--;
+            } else if (col == 8 && h.page < pages(h.seller) - 1) {
+                h.page++;
+            } else if (col == 4 && h.seller) {
                 sellAll(p);
-            } else if (slot < 45 && slot < sell.size()) {
-                sellItem(p, sell.get(slot), e.isShiftClick());
             }
-        } else if (slot < 45 && slot < buy.size()) {
-            buyItem(p, buy.get(slot));
+            render(top, h, p);
+            return;
         }
-        render(top, p, seller);
+
+        int idx = h.map[slot];
+        if (idx >= 0) {
+            if (h.seller) {
+                if (idx < sell.size()) {
+                    sellItem(p, sell.get(idx), e.isShiftClick() || e.isRightClick());
+                }
+            } else if (idx < buy.size()) {
+                buyItem(p, buy.get(idx));
+            }
+        }
+        render(top, h, p);
     }
 
     @EventHandler(priority = EventPriority.HIGH)

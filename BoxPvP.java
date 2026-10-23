@@ -22,8 +22,10 @@ public class BoxPvP extends JavaPlugin {
     private MineManager mines;
     private ShopManager shop;
     private LaunchPadManager pads;
+    private DummyManager dummies;
+    private RankManager ranks;
     private Location spawn;
-    private final Map<UUID, Long> combat = new HashMap<UUID, Long>();
+    private final Map<UUID, Tag> combat = new HashMap<UUID, Tag>();
 
     @Override
     public void onEnable() {
@@ -36,19 +38,24 @@ public class BoxPvP extends JavaPlugin {
         mines = new MineManager(this);
         shop = new ShopManager(this);
         pads = new LaunchPadManager(this);
+        dummies = new DummyManager(this);
+        ranks = new RankManager(this);
 
         stats.load();
         regions.load();
         mines.load();
         shop.load();
         pads.load();
+        ranks.load();
 
         Bukkit.getPluginManager().registerEvents(new GameListener(this), this);
         Bukkit.getPluginManager().registerEvents(shop, this);
         Bukkit.getPluginManager().registerEvents(pads, this);
+        Bukkit.getPluginManager().registerEvents(dummies, this);
+        dummies.start();
 
         Commands cmds = new Commands(this);
-        String[] names = {"stats", "top", "spawn", "setspawn", "setcoins", "boxpvp", "region", "mine", "npc", "launchpad"};
+        String[] names = {"stats", "top", "spawn", "setspawn", "setcoins", "boxpvp", "region", "mine", "npc", "launchpad", "dummy", "rank"};
         for (String name : names) {
             PluginCommand pc = getCommand(name);
             if (pc != null) {
@@ -70,6 +77,7 @@ public class BoxPvP extends JavaPlugin {
         for (Player p : Bukkit.getOnlinePlayers()) {
             stats.get(p);
             board.update(p);
+            ranks.applyTab(p);
         }
         getLogger().info("BoxPvP enabled.");
     }
@@ -94,9 +102,11 @@ public class BoxPvP extends JavaPlugin {
         mines.load();
         shop.load();
         pads.load();
+        ranks.load();
         regions.startRain();
         for (Player p : Bukkit.getOnlinePlayers()) {
             board.update(p);
+            ranks.applyTab(p);
         }
     }
 
@@ -124,6 +134,14 @@ public class BoxPvP extends JavaPlugin {
 
     public LaunchPadManager pads() {
         return pads;
+    }
+
+    public DummyManager dummies() {
+        return dummies;
+    }
+
+    public RankManager ranks() {
+        return ranks;
     }
 
     // ------------------------------------------------------------ spawn
@@ -154,16 +172,33 @@ public class BoxPvP extends JavaPlugin {
 
     // ------------------------------------------------------------ combat tag
 
-    public void tagCombat(Player p) {
-        combat.put(p.getUniqueId(), System.currentTimeMillis());
+    private static class Tag {
+        final long time;
+        final UUID opponent;
+
+        Tag(long time, UUID opponent) {
+            this.time = time;
+            this.opponent = opponent;
+        }
+    }
+
+    /** Marks p as in combat, remembering who they were fighting. */
+    public void tagCombat(Player p, Player opponent) {
+        combat.put(p.getUniqueId(), new Tag(System.currentTimeMillis(), opponent == null ? null : opponent.getUniqueId()));
     }
 
     public boolean inCombat(Player p) {
-        Long t = combat.get(p.getUniqueId());
+        Tag t = combat.get(p.getUniqueId());
         if (t == null) {
             return false;
         }
-        return System.currentTimeMillis() - t < getConfig().getLong("combat-tag-seconds", 10L) * 1000L;
+        return System.currentTimeMillis() - t.time < getConfig().getLong("combat-tag-seconds", 10L) * 1000L;
+    }
+
+    /** Who p was last fighting (only while still in combat), or null. */
+    public UUID combatOpponent(Player p) {
+        Tag t = combat.get(p.getUniqueId());
+        return inCombat(p) && t != null ? t.opponent : null;
     }
 
     public void clearCombat(Player p) {

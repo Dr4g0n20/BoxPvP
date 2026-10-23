@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 public class Commands implements CommandExecutor, TabCompleter {
 
@@ -81,6 +82,12 @@ public class Commands implements CommandExecutor, TabCompleter {
                 return true;
             case "launchpad":
                 launchpad(sender, a);
+                return true;
+            case "dummy":
+                dummy(sender, a);
+                return true;
+            case "rank":
+                rank(sender, a);
                 return true;
             default:
                 return false;
@@ -190,7 +197,7 @@ public class Commands implements CommandExecutor, TabCompleter {
         }
         msg(sender, "&6BoxPvP &7commands: /stats, /top, /spawn");
         if (sender.hasPermission("boxpvp.admin")) {
-            sender.sendMessage(Util.color("&7Admin: /setspawn, /region, /mine, /npc, /launchpad, /setcoins, /boxpvp reload"));
+            sender.sendMessage(Util.color("&7Admin: /setspawn, /region, /mine, /npc, /dummy, /launchpad, /rank, /setcoins, /boxpvp reload"));
         }
     }
 
@@ -491,6 +498,7 @@ public class Commands implements CommandExecutor, TabCompleter {
         }
         if (a.length == 0) {
             msg(p, "&7/npc create <seller|buyer>   |   /npc remove  (removes the nearest shop NPC within 6 blocks)");
+            msg(p, "&7seller = players BUY from it   |   buyer = players SELL to it");
             return;
         }
         if (a[0].equalsIgnoreCase("create")) {
@@ -500,11 +508,188 @@ public class Commands implements CommandExecutor, TabCompleter {
             }
             boolean seller = a[1].equalsIgnoreCase("seller");
             plugin.shop().spawnNpc(p, seller);
-            msg(p, "&aSpawned a " + (seller ? "seller" : "buyer") + " NPC where you stand.");
+            msg(p, "&aSpawned a " + (seller ? "seller (players buy from it)" : "buyer (players sell to it)") + " NPC where you stand.");
         } else if (a[0].equalsIgnoreCase("remove")) {
             msg(p, plugin.shop().removeNearest(p) ? "&aNPC removed." : "&cNo shop NPC within 6 blocks.");
         } else {
             msg(p, "&cUnknown subcommand. Use /npc for help.");
+        }
+    }
+
+    // ============================================================ /dummy
+
+    private void dummy(CommandSender sender, String[] a) {
+        if (!admin(sender)) {
+            return;
+        }
+        Player p = player(sender);
+        if (p == null) {
+            return;
+        }
+        if (a.length == 0) {
+            msg(p, "&7/dummy create   |   /dummy remove  (removes the nearest dummy within 6 blocks)");
+            return;
+        }
+        if (a[0].equalsIgnoreCase("create")) {
+            plugin.dummies().spawn(p);
+            msg(p, "&aTraining dummy spawned. Hit it to see your DPS.");
+        } else if (a[0].equalsIgnoreCase("remove")) {
+            msg(p, plugin.dummies().removeNearest(p) ? "&aDummy removed." : "&cNo dummy within 6 blocks.");
+        } else {
+            msg(p, "&cUnknown subcommand. Use /dummy for help.");
+        }
+    }
+
+    // ============================================================ /rank
+
+    private String joinFrom(String[] a, int from) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = from; i < a.length; i++) {
+            if (i > from) {
+                sb.append(' ');
+            }
+            sb.append(a[i]);
+        }
+        return sb.toString();
+    }
+
+    private void rank(CommandSender sender, String[] a) {
+        if (!admin(sender)) {
+            return;
+        }
+        RankManager rm = plugin.ranks();
+        if (a.length == 0) {
+            msg(sender, "&7/rank create <name> <prefix>   e.g. /rank create vip &a[VIP]");
+            msg(sender, "&7/rank setprefix <name> <prefix> | delete <name> | list");
+            msg(sender, "&7/rank give <player> <rank> | take <player> | check <player>");
+            return;
+        }
+        String sub = a[0].toLowerCase();
+        switch (sub) {
+            case "create": {
+                if (a.length < 3 || !validName(a[1])) {
+                    msg(sender, "&cUsage: /rank create <name> <prefix>   e.g. /rank create vip &a[VIP]");
+                    break;
+                }
+                if (rm.get(a[1]) != null) {
+                    msg(sender, "&cA rank called &f" + a[1] + " &calready exists.");
+                    break;
+                }
+                String prefix = joinFrom(a, 2);
+                if (prefix.length() > 32) {
+                    msg(sender, "&cPrefix is too long (max 32 characters including colour codes).");
+                    break;
+                }
+                rm.create(a[1], prefix);
+                msg(sender, "&aRank &f" + a[1] + " &acreated: " + prefix + " &7- give it with /rank give <player> " + a[1]);
+                break;
+            }
+            case "setprefix": {
+                RankManager.Rank r = a.length > 2 ? rm.get(a[1]) : null;
+                if (r == null) {
+                    msg(sender, "&cUsage: /rank setprefix <name> <prefix>");
+                    break;
+                }
+                String prefix = joinFrom(a, 2);
+                if (prefix.length() > 32) {
+                    msg(sender, "&cPrefix is too long (max 32 characters including colour codes).");
+                    break;
+                }
+                rm.setPrefix(r, prefix);
+                rm.applyTabAll();
+                msg(sender, "&aRank &f" + r.name + " &anow shows as " + prefix);
+                break;
+            }
+            case "delete": {
+                if (a.length < 2) {
+                    msg(sender, "&cUsage: /rank delete <name>");
+                    break;
+                }
+                boolean ok = rm.delete(a[1]);
+                rm.applyTabAll();
+                msg(sender, ok ? "&aRank deleted (anyone who had it is now rankless)." : "&cNo such rank.");
+                break;
+            }
+            case "list": {
+                if (rm.all().isEmpty()) {
+                    msg(sender, "&7No ranks yet. Make one with /rank create <name> <prefix>");
+                    break;
+                }
+                for (RankManager.Rank r : rm.all()) {
+                    sender.sendMessage(Util.color("&7- &f" + r.name + " &7shows as " + r.prefix + " &7(" + rm.holders(r) + " players)"));
+                }
+                break;
+            }
+            case "give":
+            case "set": {
+                RankManager.Rank r = a.length > 2 ? rm.get(a[2]) : null;
+                if (a.length < 3 || r == null) {
+                    msg(sender, "&cUsage: /rank give <player> <rank>   (/rank list shows the ranks)");
+                    break;
+                }
+                Player online = Bukkit.getPlayerExact(a[1]);
+                UUID id;
+                String name;
+                if (online != null) {
+                    id = online.getUniqueId();
+                    name = online.getName();
+                } else {
+                    PlayerStats ps = plugin.stats().byName(a[1]);
+                    if (ps == null) {
+                        msg(sender, "&cUnknown player. They must have joined the server at least once.");
+                        break;
+                    }
+                    id = ps.id;
+                    name = ps.name;
+                }
+                rm.give(id, r);
+                if (online != null) {
+                    rm.applyTab(online);
+                    msg(online, "&aYou now have the rank " + r.prefix);
+                }
+                msg(sender, "&a" + name + " now has the rank &f" + r.name + " &a(" + r.prefix + "&a).");
+                break;
+            }
+            case "take":
+            case "remove": {
+                if (a.length < 2) {
+                    msg(sender, "&cUsage: /rank take <player>");
+                    break;
+                }
+                Player online = Bukkit.getPlayerExact(a[1]);
+                UUID id = online != null ? online.getUniqueId() : null;
+                if (id == null) {
+                    PlayerStats ps = plugin.stats().byName(a[1]);
+                    id = ps == null ? null : ps.id;
+                }
+                if (id == null) {
+                    msg(sender, "&cUnknown player.");
+                    break;
+                }
+                boolean had = rm.take(id);
+                if (online != null) {
+                    rm.applyTab(online);
+                }
+                msg(sender, had ? "&aRank removed from &f" + a[1] + "&a." : "&7That player had no rank.");
+                break;
+            }
+            case "check": {
+                if (a.length < 2) {
+                    msg(sender, "&cUsage: /rank check <player>");
+                    break;
+                }
+                Player online = Bukkit.getPlayerExact(a[1]);
+                UUID id = online != null ? online.getUniqueId() : null;
+                if (id == null) {
+                    PlayerStats ps = plugin.stats().byName(a[1]);
+                    id = ps == null ? null : ps.id;
+                }
+                RankManager.Rank r = id == null ? null : rm.rankOf(id);
+                msg(sender, r == null ? "&7" + a[1] + " has no rank." : "&f" + a[1] + " &7has the rank &f" + r.name + " &7(" + r.prefix + "&7).");
+                break;
+            }
+            default:
+                msg(sender, "&cUnknown subcommand. Use /rank for help.");
         }
     }
 
@@ -622,7 +807,11 @@ public class Commands implements CommandExecutor, TabCompleter {
                     opts = Arrays.asList("create", "delete", "list", "info", "fill", "block", "regen");
                     break;
                 case "npc":
+                case "dummy":
                     opts = Arrays.asList("create", "remove");
+                    break;
+                case "rank":
+                    opts = Arrays.asList("create", "setprefix", "delete", "list", "give", "take", "check");
                     break;
                 case "launchpad":
                     opts = Arrays.asList("create", "setlanding", "delete", "list", "info", "power");
@@ -646,7 +835,11 @@ public class Commands implements CommandExecutor, TabCompleter {
                 opts = plugin.pads().names();
             } else if (n.equals("npc") && sub.equals("create")) {
                 opts = Arrays.asList("seller", "buyer");
+            } else if (n.equals("rank") && (sub.equals("setprefix") || sub.equals("delete"))) {
+                opts = plugin.ranks().names();
             }
+        } else if (a.length == 3 && n.equals("rank") && (a[0].equalsIgnoreCase("give") || a[0].equalsIgnoreCase("set"))) {
+            opts = plugin.ranks().names();
         } else if (a.length == 3 && n.equals("region") && a[0].equalsIgnoreCase("flag")) {
             opts = RegionManager.FLAGS;
         } else if (a.length == 4 && n.equals("region") && a[0].equalsIgnoreCase("flag")) {

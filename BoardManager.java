@@ -52,7 +52,8 @@ public class BoardManager {
                     .replace("%streak%", String.valueOf(s.streak))
                     .replace("%best%", String.valueOf(s.bestStreak))
                     .replace("%coins%", Util.fmt(s.coins))
-                    .replace("%name%", p.getName());
+                    .replace("%name%", p.getName())
+                    .replace("%rank%", rankText(p));
             // Trailing colour code makes every line unique (blank lines too) and is invisible.
             line = Util.color(line) + ChatColor.COLOR_CHAR + Integer.toHexString(i);
             if (line.length() > 40) {
@@ -76,6 +77,11 @@ public class BoardManager {
             }
         }
         lines.put(p.getUniqueId(), fresh);
+    }
+
+    private String rankText(Player p) {
+        String prefix = plugin.ranks().prefixOf(p.getUniqueId());
+        return prefix == null ? "" : prefix;
     }
 
     public void remove(Player p) {

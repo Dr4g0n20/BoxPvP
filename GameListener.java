@@ -2,9 +2,11 @@ package com.boxpvp;
 
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
+import org.bukkit.Material;
 import org.bukkit.Location;
 import org.bukkit.block.Block;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.EnderPearl;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
@@ -20,13 +22,18 @@ import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDamageEvent.DamageCause;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.ExpBottleEvent;
+import org.bukkit.event.entity.FoodLevelChangeEvent;
+import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
+import org.bukkit.event.player.PlayerTeleportEvent.TeleportCause;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.projectiles.ProjectileSource;
@@ -41,6 +48,7 @@ public class GameListener implements Listener {
     private final BoxPvP plugin;
     private final Map<UUID, Long> denyCooldown = new HashMap<UUID, Long>();
     private final Map<String, Long> lastKill = new HashMap<String, Long>();
+    private final Map<UUID, Long> pearlCooldown = new HashMap<UUID, Long>();
 
     public GameListener(BoxPvP plugin) {
         this.plugin = plugin;
@@ -67,8 +75,13 @@ public class GameListener implements Listener {
     public void onJoin(PlayerJoinEvent e) {
         final Player p = e.getPlayer();
         plugin.stats().get(p);
+        plugin.ranks().applyTab(p);
         if (plugin.getConfig().getBoolean("teleport-to-spawn-on-join", true) && plugin.spawn() != null) {
             p.teleport(plugin.spawn());
+        }
+        if (!plugin.regions().allowed(p.getLocation(), "hunger")) {
+            p.setFoodLevel(20);
+            p.setSaturation(20f);
         }
         Bukkit.getScheduler().runTaskLater(plugin, new Runnable() {
             @Override
@@ -81,10 +94,31 @@ public class GameListener implements Listener {
     @EventHandler
     public void onQuit(PlayerQuitEvent e) {
         Player p = e.getPlayer();
+
+        // Combat logging: leaving mid-fight counts as a death for you and a kill for your opponent.
+        if (plugin.getConfig().getBoolean("combat-log.enabled", true) && !p.isDead() && plugin.inCombat(p)) {
+            UUID opponent = plugin.combatOpponent(p);
+            PlayerStats vs = plugin.stats().get(p);
+            int lostStreak = vs.streak;
+            vs.deaths++;
+            vs.streak = 0;
+            long penalty = plugin.getConfig().getLong("coins.death-penalty", 0L);
+            if (penalty > 0) {
+                vs.coins = Math.max(0L, vs.coins - penalty);
+            }
+            Player killer = opponent == null ? null : Bukkit.getPlayer(opponent);
+            if (killer != null && killer.isOnline() && !killer.equals(p)) {
+                reward(killer, p, lostStreak);
+                plugin.board().update(killer);
+            }
+            Bukkit.broadcastMessage(Util.color("&c" + p.getName() + " &7logged out during combat and was counted as a death."));
+        }
+
         plugin.board().remove(p);
         plugin.pads().forget(p);
         plugin.clearCombat(p);
         denyCooldown.remove(p.getUniqueId());
+        pearlCooldown.remove(p.getUniqueId());
     }
 
     // ------------------------------------------------------------ damage
@@ -133,8 +167,8 @@ public class GameListener implements Listener {
             }
             // Attacking ends your own launch immunity immediately (no camping behind it).
             plugin.pads().endImmunity(attacker);
-            plugin.tagCombat(victim);
-            plugin.tagCombat(attacker);
+            plugin.tagCombat(victim, attacker);
+            plugin.tagCombat(attacker, victim);
             return;
         }
 
@@ -378,6 +412,103 @@ public class GameListener implements Listener {
             e.setCancelled(true);
             deny(p, "&cYou can't drop items here.");
         }
+    }
+
+    // ------------------------------------------------------------ exploit fixes
+
+    /** Enderpearl cooldown: refuse to throw while it is running (the pearl is not used up). */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onPearlUse(PlayerInteractEvent e) {
+        Action a = e.getAction();
+        if (a != Action.RIGHT_CLICK_AIR && a != Action.RIGHT_CLICK_BLOCK) {
+            return;
+        }
+        ItemStack it = e.getItem();
+        if (it == null || it.getType() != Material.ENDER_PEARL) {
+            return;
+        }
+        long cd = (long) (plugin.getConfig().getDouble("pearls.cooldown-seconds", 10.0) * 1000.0);
+        if (cd <= 0) {
+            return;
+        }
+        Player p = e.getPlayer();
+        Long last = pearlCooldown.get(p.getUniqueId());
+        long now = System.currentTimeMillis();
+        if (last != null && now - last < cd) {
+            e.setCancelled(true);
+            deny(p, "&cEnder pearl cooldown: &f" + String.format("%.1f", (cd - (now - last)) / 1000.0) + "s");
+        }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onPearlLaunch(ProjectileLaunchEvent e) {
+        if (!(e.getEntity() instanceof EnderPearl)) {
+            return;
+        }
+        ProjectileSource src = e.getEntity().getShooter();
+        if (src instanceof Player) {
+            pearlCooldown.put(((Player) src).getUniqueId(), System.currentTimeMillis());
+        }
+    }
+
+    /** No pearling (or chorus-fruiting) from a PvP area into a no-PvP safe zone. The pearl is refunded. */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onTeleport(PlayerTeleportEvent e) {
+        TeleportCause c = e.getCause();
+        if (c != TeleportCause.ENDER_PEARL && c != TeleportCause.CHORUS_FRUIT) {
+            return;
+        }
+        if (!plugin.getConfig().getBoolean("pearls.block-into-safe-zones", true)) {
+            return;
+        }
+        Player p = e.getPlayer();
+        if (bypass(p) || e.getTo() == null) {
+            return;
+        }
+        if (!plugin.regions().allowed(e.getTo(), "pvp") && plugin.regions().allowed(e.getFrom(), "pvp")) {
+            e.setCancelled(true);
+            if (c == TeleportCause.ENDER_PEARL) {
+                p.getInventory().addItem(new ItemStack(Material.ENDER_PEARL, 1));
+            }
+            p.sendMessage(Util.color("&cYou can't teleport into a safe zone from the arena."));
+        }
+    }
+
+    /** Region flag "hunger": deny = food level can't drop there (eating still works). */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onHunger(FoodLevelChangeEvent e) {
+        if (!(e.getEntity() instanceof Player)) {
+            return;
+        }
+        Player p = (Player) e.getEntity();
+        if (e.getFoodLevel() < p.getFoodLevel() && !plugin.regions().allowed(p.getLocation(), "hunger")) {
+            e.setCancelled(true);
+            // Top the bar back up so nobody is stuck unable to sprint after hunger was turned off.
+            p.setFoodLevel(20);
+            p.setSaturation(20f);
+        }
+    }
+
+    // ------------------------------------------------------------ ranks (chat prefix)
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onChat(AsyncPlayerChatEvent e) {
+        if (!plugin.getConfig().getBoolean("ranks.chat-prefix", true)) {
+            return;
+        }
+        String prefix = plugin.ranks().prefixOf(e.getPlayer().getUniqueId());
+        if (prefix == null) {
+            return;
+        }
+        String fmt = Util.color(plugin.getConfig().getString("ranks.chat-format", "%prefix% &f%player%&7: &f%message%"));
+        fmt = fmt.replace("%", "%%");
+        fmt = fmt.replace("%%prefix%%", prefix.replace("%", "%%"));
+        fmt = fmt.replace("%%player%%", "%1$s");
+        fmt = fmt.replace("%%message%%", "%2$s");
+        if (!fmt.contains("%1$s") || !fmt.contains("%2$s")) {
+            fmt = prefix.replace("%", "%%") + " %1$s: %2$s";
+        }
+        e.setFormat(fmt);
     }
 
     // ------------------------------------------------------------ wand / xp rain

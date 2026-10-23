@@ -57,7 +57,7 @@ Place your enchanting tables normally; `build deny` stops people breaking them. 
 **Arena** - nothing needed: with no region, the defaults in `config.yml` apply (pvp on, build on).
 (To be explicit, make an `arena` region with priority 1 and set `pvp allow`, `build allow`.)
 
-Flags: `pvp`, `build`, `fall-damage`, `mob-spawn`, `item-drop`, `xp-rain`  - each `allow`, `deny` or `none`.
+Flags: `pvp`, `build`, `fall-damage`, `mob-spawn`, `item-drop`, `xp-rain`, `hunger`  - each `allow`, `deny` or `none`.
 Use `/region info <name>`, `/region list`, `/region delete <name>`, `/region priority <name> <n>`, `/region decay <name> <seconds|off>`.
 
 **Mines (auto-smelting, regenerating)**
@@ -71,8 +71,21 @@ Use `/region info <name>`, `/region list`, `/region delete <name>`, `/region pri
 **Shop NPCs**
 Stand where you want them: `/npc create seller` and `/npc create buyer` (two separate villagers that
 don't move or take damage). `/npc remove` deletes the nearest one. Right-click an NPC to open its menu:
-* **Seller** - click an item to sell 1, shift-click to sell all, or use the **Sell All** button.
-* **Buyer** - click to buy. Prices and items are in `config.yml` under `shop:`.
+* **Seller** - the NPC you **buy from**. Each item has a green button under it; click it to buy.
+* **Buyer** - the NPC you **sell to**. Click the button under a resource to sell 1 (right/shift-click sells all),
+  or use **Sell All**.
+Prices and items are in `config.yml` under `shop:`.
+
+**Ranks (cosmetic prefixes, admin-only)**
+`/rank create vip &a[VIP]` makes a rank whose prefix shows in chat (and the tab list). `/rank give <player> <rank>`
+and `/rank take <player>` assign it; `/rank setprefix`, `/rank delete`, `/rank list`, `/rank check <player>`.
+Only `boxpvp.admin` can run these, ranks give no permissions, and players can't change them. Use `%rank%` on the
+scoreboard if you want it there too. Chat layout is `ranks.chat-format` in the config.
+
+**Exploit protection**
+* Combat logging: quitting within 10s of PvP counts as a death for you and a kill for your opponent.
+* Ender pearls: 10s cooldown, and you can't pearl (or chorus-fruit) from a PvP area into a no-PvP region - the pearl is refunded.
+* Hunger: **off everywhere by default** - nobody loses food. Turn it on for a region with `/region flag <name> hunger allow`, or everywhere with `default-flags.hunger: true`.
 
 **Launch pads**
 1. Place a **gold block** (type is configurable). Stand on it and run `/launchpad create <name>`.

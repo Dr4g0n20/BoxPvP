@@ -32,6 +32,12 @@ commands:
   npc:
     description: Create or remove shop NPCs
     usage: /npc <create|remove> [seller|buyer]
+  rank:
+    description: Create and give cosmetic rank prefixes (admin only)
+    usage: /rank <create|setprefix|delete|list|give|take|check>
+  dummy:
+    description: Create or remove DPS training dummies
+    usage: /dummy <create|remove>
   launchpad:
     aliases: [lp]
     description: Manage launch pads

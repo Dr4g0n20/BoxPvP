@@ -32,7 +32,7 @@ import java.util.UUID;
 public class RegionManager {
 
     public static final List<String> FLAGS =
-            Arrays.asList("pvp", "build", "fall-damage", "mob-spawn", "item-drop", "xp-rain");
+            Arrays.asList("pvp", "build", "fall-damage", "mob-spawn", "item-drop", "xp-rain", "hunger");
     public static final String WAND_NAME = ChatColor.GOLD + "Region Wand";
 
     private final BoxPvP plugin;
@@ -164,7 +164,9 @@ public class RegionManager {
         if (b != null) {
             return b;
         }
-        return plugin.getConfig().getBoolean("default-flags." + flag, !flag.equals("xp-rain"));
+        // xp-rain and hunger are OFF unless a region (or the config) turns them on.
+        boolean def = !(flag.equals("xp-rain") || flag.equals("hunger"));
+        return plugin.getConfig().getBoolean("default-flags." + flag, def);
     }
 
     // ------------------------------------------------------------ block decay
