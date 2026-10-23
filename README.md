@@ -90,11 +90,17 @@ scoreboard if you want it there too. Chat layout is `ranks.chat-format` in the c
 **Launch pads**
 1. Place a **gold block** (type is configurable). Stand on it and run `/launchpad create <name>`.
 2. Walk to where players should land and run `/launchpad setlanding <name>`.
-3. Walking onto the gold block now flies the player along an arc to the landing spot with no fall damage.
-   Optional: `/launchpad power <name> <0.1-5>` raises/lowers the arc.
-4. Launched players are immune to damage while flying and for 4 seconds after landing, and the immunity
-   ends instantly if they attack someone (so it can't be used to camp). Set `build deny` on the
-   pad's region so nobody breaks the gold block (breaking it disables the pad).
+3. Walking onto the gold block seats the player on an invisible armour stand that the server glides smoothly
+   to the landing point (gentle start and stop, no fall damage), then puts them exactly on the landing spot.
+   They can't hop off mid-flight, so there's no drifting, overshooting or missing the target.
+4. By default the flight is a **straight line**. If a wall or roof is in the way, add height with
+   `/launchpad arc <name> <blocks>` (e.g. `/launchpad arc <name> 6` rises 6 blocks in the middle;
+   `/launchpad arc <name> default` resets it). `launchpad.default-arc` in the config sets the default.
+5. Riders are immune to damage during the flight and for 4 seconds after landing, and the immunity ends
+   instantly if they attack someone (so it can't be used to camp). Set `build deny` on the pad's region so
+   nobody breaks the gold block (breaking it disables the pad).
+6. If a flight ever gets stuck on a block, the plugin gives up after about a third of a second and places the
+   player at the landing point anyway.
 
 ---------------------------------------------------------------------------------------
 ## 4. Player commands

@@ -77,15 +77,16 @@ xp-rain:
   xp-per-bottle: 8
 
 # Launch pads. Pads must be this block type (stand on it and use /launchpad create).
+# Stepping on one seats you on an invisible armour stand that the server glides to the landing point
+# (smooth start and stop), then places you exactly on it.
 launchpad:
   block: GOLD_BLOCK
   immunity-seconds: 4          # damage immunity after landing (ends instantly if you attack)
-  flight-speed: 1.1            # blocks per tick along the flight path
-  min-ticks: 14
-  max-ticks: 120
-  arc-base: 2.5                # arc height = arc-base + distance * arc-per-block (x pad power)
-  arc-per-block: 0.12
-  max-arc: 20
+  flight-speed: 1.0            # average blocks per tick (20 ticks = 1 second) - higher = faster flights
+  min-ticks: 14                # shortest possible flight
+  max-ticks: 160               # longest possible flight
+  default-arc: 0.0             # extra height at mid-flight in blocks. 0 = dead straight line (override per pad with /launchpad arc)
+  seat-offset: 0.35            # height tweak for the invisible seat; raise/lower if riders look sunk or floating
   cooldown-ms: 1500
 
 mines:

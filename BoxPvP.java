@@ -47,6 +47,7 @@ public class BoxPvP extends JavaPlugin {
         shop.load();
         pads.load();
         ranks.load();
+        pads.cleanupLeftovers();
 
         Bukkit.getPluginManager().registerEvents(new GameListener(this), this);
         Bukkit.getPluginManager().registerEvents(shop, this);
@@ -86,6 +87,9 @@ public class BoxPvP extends JavaPlugin {
     public void onDisable() {
         if (stats != null) {
             stats.save();
+        }
+        if (pads != null) {
+            pads.shutdown();
         }
         if (mines != null) {
             mines.restorePending();

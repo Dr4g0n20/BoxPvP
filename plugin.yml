@@ -41,7 +41,7 @@ commands:
   launchpad:
     aliases: [lp]
     description: Manage launch pads
-    usage: /launchpad <create|setlanding|delete|list|info|power>
+    usage: /launchpad <create|setlanding|delete|list|info|arc>
 permissions:
   boxpvp.admin:
     description: Use all admin commands

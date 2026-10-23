@@ -707,7 +707,8 @@ public class Commands implements CommandExecutor, TabCompleter {
         if (a.length == 0) {
             msg(p, "&7/launchpad create <name>   (stand on a " + lm.padMaterial().name().toLowerCase().replace('_', ' ') + ")");
             msg(p, "&7/launchpad setlanding <name>   (stand where players should land)");
-            msg(p, "&7/launchpad delete <name> | list | info <name> | power <name> <multiplier>");
+            msg(p, "&7/launchpad delete <name> | list | info <name>");
+            msg(p, "&7/launchpad arc <name> <blocks|default>   (0 = dead straight line, higher = curved path)");
             return;
         }
         String sub = a[0].toLowerCase();
@@ -767,7 +768,8 @@ public class Commands implements CommandExecutor, TabCompleter {
                     msg(p, "&cUsage: /launchpad info <name>");
                     break;
                 }
-                msg(p, "&6" + pad.name + " &7at &f" + pad.x + "," + pad.y + "," + pad.z + " &7(" + pad.world + "), power &f" + pad.power);
+                msg(p, "&6" + pad.name + " &7at &f" + pad.x + "," + pad.y + "," + pad.z + " &7(" + pad.world + "), arc &f" + lm.effectiveArc(pad)
+                        + (pad.arc < 0 ? " &7(default)" : ""));
                 if (pad.landing == null) {
                     msg(p, "&cLanding point not set.");
                 } else {
@@ -775,16 +777,27 @@ public class Commands implements CommandExecutor, TabCompleter {
                 }
                 break;
             }
-            case "power": {
+            case "arc": {
                 LaunchPadManager.Pad pad = a.length > 1 ? lm.get(a[1]) : null;
-                Double pw = a.length > 2 ? Util.parseDouble(a[2]) : null;
-                if (pad == null || pw == null || pw <= 0 || pw > 5) {
-                    msg(p, "&cUsage: /launchpad power <name> <0.1-5>  (multiplies the arc height)");
+                if (pad == null || a.length < 3) {
+                    msg(p, "&cUsage: /launchpad arc <name> <blocks|default>   (0 = straight line)");
                     break;
                 }
-                pad.power = pw;
+                if (a[2].equalsIgnoreCase("default")) {
+                    pad.arc = -1;
+                    lm.save();
+                    msg(p, "&aPad &f" + pad.name + " &anow uses the config default arc (&f" + lm.effectiveArc(pad) + "&a).");
+                    break;
+                }
+                Double blocks = Util.parseDouble(a[2]);
+                if (blocks == null || blocks < 0 || blocks > 50) {
+                    msg(p, "&cArc must be 0-50 blocks (0 = straight line), or 'default'.");
+                    break;
+                }
+                pad.arc = blocks;
                 lm.save();
-                msg(p, "&aPower of &f" + pad.name + " &aset to &f" + pw + "&a.");
+                msg(p, "&aPad &f" + pad.name + " &anow rises &f" + blocks + " &ablocks at the middle of the flight"
+                        + (blocks == 0 ? " &7(straight line)" : "") + "&a.");
                 break;
             }
             default:
@@ -814,7 +827,7 @@ public class Commands implements CommandExecutor, TabCompleter {
                     opts = Arrays.asList("create", "setprefix", "delete", "list", "give", "take", "check");
                     break;
                 case "launchpad":
-                    opts = Arrays.asList("create", "setlanding", "delete", "list", "info", "power");
+                    opts = Arrays.asList("create", "setlanding", "delete", "list", "info", "arc");
                     break;
                 case "top":
                     opts = TOP_TYPES;

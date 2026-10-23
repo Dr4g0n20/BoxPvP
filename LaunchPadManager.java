@@ -10,35 +10,48 @@ import org.bukkit.block.Block;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.ArmorStand;
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.world.ChunkLoadEvent;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
+import org.spigotmc.event.entity.EntityDismountEvent;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
- * Launch pads: step on a registered gold block and you are flown along an arc to the pad's landing point.
- * While flying (and briefly after landing) you are immune to damage - the immunity ends the moment you attack.
+ * Launch pads: step on a registered gold block and you are seated on an invisible armour stand that glides
+ * smoothly to the pad's landing point, then you are placed exactly on it.
+ *
+ * The seat is moved by the SERVER every tick, so (unlike pushing the player with velocity) the client can't
+ * drift, overshoot or fight the movement. While riding (and briefly after landing) you are immune to damage;
+ * attacking ends the immunity immediately.
  */
 public class LaunchPadManager implements Listener {
+
+    public static final String TAG_SEAT = "boxpvp_launchseat";
 
     public static class Pad {
         public final String name;
         public final String world;
         public final int x, y, z;
         public Location landing;
-        public double power = 1.0;
+        /** Extra height (blocks) at the middle of the flight. 0 = straight line, negative = use config default. */
+        public double arc = -1;
 
         Pad(String name, String world, int x, int y, int z) {
             this.name = name;
@@ -57,6 +70,7 @@ public class LaunchPadManager implements Listener {
     private final Map<UUID, Long> noFallUntil = new HashMap<UUID, Long>();
     private final Map<UUID, Long> lastLaunch = new HashMap<UUID, Long>();
     private final Map<UUID, Flight> flights = new HashMap<UUID, Flight>();
+    private final Set<UUID> activeSeats = new HashSet<UUID>();
 
     public LaunchPadManager(BoxPvP plugin) {
         this.plugin = plugin;
@@ -79,7 +93,7 @@ public class LaunchPadManager implements Listener {
                 continue;
             }
             Pad pad = new Pad(name, s.getString("world"), s.getInt("x"), s.getInt("y"), s.getInt("z"));
-            pad.power = s.getDouble("power", 1.0);
+            pad.arc = s.getDouble("arc", -1.0);
             pad.landing = Util.loadLoc(s, "landing");
             register(pad);
         }
@@ -98,7 +112,7 @@ public class LaunchPadManager implements Listener {
             c.set(p + "x", pad.x);
             c.set(p + "y", pad.y);
             c.set(p + "z", pad.z);
-            c.set(p + "power", pad.power);
+            c.set(p + "arc", pad.arc);
             if (pad.landing != null) {
                 Util.saveLoc(c, p + "landing", pad.landing);
             }
@@ -150,6 +164,11 @@ public class LaunchPadManager implements Listener {
         return out;
     }
 
+    /** The arc height this pad actually uses (its own setting, or the config default). */
+    public double effectiveArc(Pad pad) {
+        return pad.arc >= 0 ? pad.arc : Math.max(0.0, plugin.getConfig().getDouble("launchpad.default-arc", 0.0));
+    }
+
     // ------------------------------------------------------------ immunity
 
     public boolean isImmune(Player p) {
@@ -176,13 +195,55 @@ public class LaunchPadManager implements Listener {
         return t != null && t > System.currentTimeMillis();
     }
 
+    /** Called when a player quits: drops their flight (and seat) if they had one. */
     public void forget(Player p) {
         immuneUntil.remove(p.getUniqueId());
         noFallUntil.remove(p.getUniqueId());
         lastLaunch.remove(p.getUniqueId());
         Flight f = flights.remove(p.getUniqueId());
         if (f != null) {
-            f.cancel();
+            f.abort();
+        }
+    }
+
+    /** Called on shutdown: removes every seat that is still in the air. */
+    public void shutdown() {
+        for (Flight f : new ArrayList<Flight>(flights.values())) {
+            f.abort();
+        }
+        flights.clear();
+    }
+
+    /** Removes seats left behind by a crash. Called on startup. */
+    public void cleanupLeftovers() {
+        for (World w : Bukkit.getWorlds()) {
+            for (ArmorStand a : w.getEntitiesByClass(ArmorStand.class)) {
+                if (a.getScoreboardTags().contains(TAG_SEAT) && !activeSeats.contains(a.getUniqueId())) {
+                    a.remove();
+                }
+            }
+        }
+    }
+
+    @EventHandler
+    public void onChunkLoad(ChunkLoadEvent e) {
+        for (Entity en : e.getChunk().getEntities()) {
+            if (en instanceof ArmorStand && en.getScoreboardTags().contains(TAG_SEAT)
+                    && !activeSeats.contains(en.getUniqueId())) {
+                en.remove();
+            }
+        }
+    }
+
+    /** You can't hop off the seat mid-flight. */
+    @EventHandler(priority = EventPriority.HIGH)
+    public void onDismount(EntityDismountEvent e) {
+        if (!(e.getEntity() instanceof Player)) {
+            return;
+        }
+        Flight f = flights.get(e.getEntity().getUniqueId());
+        if (f != null && !f.finishing && f.isSeat(e.getDismounted())) {
+            e.setCancelled(true);
         }
     }
 
@@ -204,7 +265,7 @@ public class LaunchPadManager implements Listener {
             return;
         }
         Player p = e.getPlayer();
-        if (flights.containsKey(p.getUniqueId())) {
+        if (flights.containsKey(p.getUniqueId()) || p.isInsideVehicle()) {
             return;
         }
         // A pad only works while its block is still the pad block type (broken/replaced = disabled).
@@ -232,20 +293,40 @@ public class LaunchPadManager implements Listener {
         Location land = pad.landing;
 
         double dx = land.getX() - start.getX();
-        double dz = land.getZ() - start.getZ();
         double dy = land.getY() - start.getY();
-        double horiz = Math.sqrt(dx * dx + dz * dz);
+        double dz = land.getZ() - start.getZ();
+        double dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-        double speed = Math.max(0.2, cfg.getDouble("launchpad.flight-speed", 1.1));
-        int total = (int) Math.round(Math.sqrt(horiz * horiz + dy * dy * 0.25) / speed);
+        double speed = Math.max(0.2, cfg.getDouble("launchpad.flight-speed", 1.0));
+        int total = (int) Math.round(dist / speed);
         total = Math.max(cfg.getInt("launchpad.min-ticks", 14), total);
-        total = Math.min(cfg.getInt("launchpad.max-ticks", 120), total);
+        total = Math.min(cfg.getInt("launchpad.max-ticks", 160), total);
 
-        double arc = cfg.getDouble("launchpad.arc-base", 2.5) + horiz * cfg.getDouble("launchpad.arc-per-block", 0.12);
-        arc = Math.min(cfg.getDouble("launchpad.max-arc", 20.0), arc) * pad.power;
+        double seatOffset = cfg.getDouble("launchpad.seat-offset", 0.35);
+        Location seatLoc = start.clone();
+        seatLoc.setY(start.getY() + seatOffset);
+
+        // The invisible seat: an armour stand with no hitbox that nothing can hurt.
+        ArmorStand seat = start.getWorld().spawn(seatLoc, ArmorStand.class);
+        seat.setMarker(true);
+        seat.setVisible(false);
+        seat.setBasePlate(false);
+        seat.setArms(false);
+        seat.setInvulnerable(true);
+        seat.setSilent(true);
+        seat.setCollidable(false);
+        seat.setCanPickupItems(false);
+        seat.addScoreboardTag(TAG_SEAT);
+        activeSeats.add(seat.getUniqueId());
+
+        if (!seat.addPassenger(p)) {
+            activeSeats.remove(seat.getUniqueId());
+            seat.remove();
+            return;
+        }
 
         immuneUntil.put(p.getUniqueId(), Long.MAX_VALUE);
-        Flight f = new Flight(p, start, land, total, arc);
+        Flight f = new Flight(p, seat, start, land, total, effectiveArc(pad), seatOffset);
         flights.put(p.getUniqueId(), f);
         f.runTaskTimer(plugin, 1L, 1L);
 
@@ -256,49 +337,99 @@ public class LaunchPadManager implements Listener {
 
     private class Flight extends BukkitRunnable {
         private final Player player;
+        private final ArmorStand seat;
+        private final UUID seatId;
         private final Location start;
         private final Location target;
         private final int total;
         private final double arc;
+        private final double seatOffset;
         private int tick = 0;
+        private int stalled = 0;
+        private Vector lastSeatPos;
+        boolean finishing = false;
 
-        Flight(Player player, Location start, Location target, int total, double arc) {
+        Flight(Player player, ArmorStand seat, Location start, Location target, int total, double arc, double seatOffset) {
             this.player = player;
+            this.seat = seat;
+            this.seatId = seat.getUniqueId();
             this.start = start.clone();
             this.target = target.clone();
             this.total = total;
             this.arc = arc;
+            this.seatOffset = seatOffset;
+            this.lastSeatPos = seat.getLocation().toVector();
+        }
+
+        boolean isSeat(Entity e) {
+            return e != null && e.getUniqueId().equals(seatId);
+        }
+
+        /** Where the player's feet should be at progress u (0..1). Pure geometry: a line, plus an optional arc. */
+        private Vector pointAt(double u) {
+            double x = start.getX() + (target.getX() - start.getX()) * u;
+            double z = start.getZ() + (target.getZ() - start.getZ()) * u;
+            double y = start.getY() + (target.getY() - start.getY()) * u + arc * 4.0 * u * (1.0 - u);
+            return new Vector(x, y, z);
         }
 
         @Override
         public void run() {
-            if (!player.isOnline() || player.isDead()) {
+            if (finishing) {
+                return;
+            }
+            if (!player.isOnline() || player.isDead() || !seat.isValid() || !seat.getPassengers().contains(player)) {
                 finish();
                 return;
             }
             tick++;
-            double s = Math.min(1.0, (double) tick / (double) total);
-            double x = start.getX() + (target.getX() - start.getX()) * s;
-            double z = start.getZ() + (target.getZ() - start.getZ()) * s;
-            double y = start.getY() + (target.getY() - start.getY()) * s + arc * 4.0 * s * (1.0 - s);
+            if (tick > total) {
+                finish();
+                return;
+            }
 
-            Vector v = new Vector(x, y, z).subtract(player.getLocation().toVector());
+            // Smoothstep: ease in and out so the ride starts and ends gently instead of with a jolt.
+            double s = (double) tick / (double) total;
+            double u = s * s * (3.0 - 2.0 * s);
+            Vector want = pointAt(u);
+
+            Location cur = seat.getLocation();
+            Vector v = new Vector(want.getX() - cur.getX(),
+                    want.getY() + seatOffset - cur.getY(),
+                    want.getZ() - cur.getZ());
             double len = v.length();
+
+            // Safety net: if the seat is stuck (blocked, unloaded chunk...) give up and place the player at the end.
+            double moved = cur.toVector().distance(lastSeatPos);
+            lastSeatPos = cur.toVector();
+            if (tick > 6 && len > 0.2 && moved < 0.01) {
+                stalled++;
+                if (stalled >= 6) {
+                    finish();
+                    return;
+                }
+            } else {
+                stalled = 0;
+            }
+
             if (len > 3.5) {
                 v.multiply(3.5 / len);
             }
-            player.setVelocity(v);
+            seat.setVelocity(v);
             player.setFallDistance(0f);
-
-            if (tick >= total || (tick > 8 && player.isOnGround())) {
-                finish();
-            }
         }
 
-        private void finish() {
-            cancel();
+        /** Ends the ride normally: drop the seat and put the player exactly on the landing point. */
+        void finish() {
+            if (finishing) {
+                return;
+            }
+            finishing = true;
+            stopTask();
             UUID id = player.getUniqueId();
             flights.remove(id);
+            removeSeat();
+
             long now = System.currentTimeMillis();
             noFallUntil.put(id, now + 3000L);
             // Only keep immunity if the player hasn't already ended it by attacking.
@@ -306,9 +437,40 @@ public class LaunchPadManager implements Listener {
                 long ms = (long) (plugin.getConfig().getDouble("launchpad.immunity-seconds", 4.0) * 1000.0);
                 immuneUntil.put(id, now + ms);
             }
-            if (player.isOnline()) {
+            if (player.isOnline() && !player.isDead()) {
+                Location dest = target.clone();
+                // Keep the way the player is looking instead of snapping to the admin's camera direction.
+                dest.setYaw(player.getLocation().getYaw());
+                dest.setPitch(player.getLocation().getPitch());
+                player.teleport(dest);
                 player.setFallDistance(0f);
-                player.getWorld().spawnParticle(Particle.CLOUD, player.getLocation(), 15, 0.4, 0.1, 0.4, 0.03);
+                player.getWorld().spawnParticle(Particle.CLOUD, dest, 15, 0.4, 0.1, 0.4, 0.03);
+            }
+        }
+
+        /** Hard stop with no teleport (quit / shutdown). */
+        void abort() {
+            if (finishing) {
+                return;
+            }
+            finishing = true;
+            stopTask();
+            removeSeat();
+        }
+
+        private void stopTask() {
+            try {
+                cancel();
+            } catch (IllegalStateException ignored) {
+                // not scheduled
+            }
+        }
+
+        private void removeSeat() {
+            activeSeats.remove(seatId);
+            if (seat.isValid()) {
+                seat.eject();
+                seat.remove();
             }
         }
     }
