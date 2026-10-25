@@ -68,11 +68,60 @@ don't move or take damage). `/npc remove` deletes the nearest one. Right-click a
   or use **Sell All**.
 Prices and items are in `config.yml` under `shop:`.
 
-**Ranks (cosmetic prefixes, admin-only)**
-`/rank create vip &a[VIP]` makes a rank whose prefix shows in chat (and the tab list). `/rank give <player> <rank>`
-and `/rank take <player>` assign it; `/rank setprefix`, `/rank delete`, `/rank list`, `/rank check <player>`.
-Only `boxpvp.admin` can run these, ranks give no permissions, and players can't change them. Use `%rank%` on the
-scoreboard if you want it there too. Chat layout is `ranks.chat-format` in the config.
+**Ranks and clans (cosmetic labels, admin-only)**
+Chat, the tab list and the name above a player's head all read **`[rank] username [clan]`**.
+* `/rank create vip &a[VIP]` makes a rank; `/clan create wolves &b[WOLF]` makes a clan.
+* `/rank give <player> <rank>` / `/clan give <player> <clan>` assign them; `take <player>` removes them.
+* `setprefix <name> <display>`, `delete <name>`, `list`, `check <player>` work the same for both.
+* The display text can be at most 16 characters including `&` colour codes (a Minecraft 1.12 limit on name tags).
+* Only `boxpvp.admin` can run these, they give no permissions, and players can't change their own.
+* Turn above-head/tab-list tags off with `nametags.enabled: false`; change chat layout with `chat.format`.
+
+**Achievement titles (automatic ranks)**
+Cosmetic titles earned from your stats - for example **1,000 ores mined = [Master Grinder], 10,000 = [Elite Grinder],
+100,000 = [Ultimate Grinder]**. There are also tracks for kills (Slayer), assists (Wingman), best killstreak (Streaker)
+and items sold (Trader); add or change tracks and tiers under `achievements:` in the config.
+* A new title is announced, selected automatically, and (from tier 3 up) broadcast to the server.
+* `/title` lists yours with progress, `/title <name>` shows one, `/title off` hides it.
+* The title shows in chat, above the head and in the tab list in the rank slot - but only for players who have no
+  admin-given `/rank`, so staff ranks always win.
+* Titles are recalculated from stats, so `/resetstats` (a new season) also resets them.
+
+**Upgrader (pickaxes, swords and axes)**
+`/npc create upgrader` spawns a villager. Hold a **pickaxe, sword or axe** in your main hand and right-click it: pay
+coins to add enchantments. The menu changes with the item you hold (levels and prices are in the `upgrader:` config):
+* **Pickaxe** - Efficiency, Unbreaking, Fortune, Mending
+* **Sword** - Sharpness, Fire Aspect, Knockback, Unbreaking, Mending
+* **Axe** - Sharpness, Efficiency, Unbreaking, Mending
+The item stays in your hand the whole time, so nothing can be lost. Fortune multiplies mine drops (including
+auto-smelted ingots). Sharpness, Fire Aspect and Knockback affect PvP balance, so adjust their prices to taste.
+
+**Custom enchants (Enchanter + slots)**
+`/npc create enchanter` spawns the Enchanter. Pull enchants into your collection:
+* **100 coins** - random tool, random enchant
+* **1,000 coins** - you choose pickaxe/sword/axe, the enchant is random
+* **10,000 coins** - you choose the exact enchant
+Every pull is level 1 and is kept on your account (not as an item). Then, at the **Upgrader -> Custom Enchants**:
+* **APPLY** a pulled enchant to the tool in your hand (uses up one copy). Each tool has a limited number of
+  **slots** (1 to start; **UNLOCK SLOT** costs coins, up to 4). A tool can't carry the same enchant twice.
+* **UPGRADE** an applied enchant with coins (left-click); **right-click** removes it back to your collection at level 1.
+The enchants show as lore on the tool (e.g. `Explosion III`). All numbers/prices are under `custom-enchants:`.
+* **Pickaxe:** Explosion (cosmetic blast that mines a sphere), Vein Miner, Jackpot, Midas, Momentum, Quick Regen
+* **Sword:** Lifesteal, Execute, Frenzy, Streak Surge, Frostbite, Thunderstrike, Hunter's Mark
+* **Axe:** Cleave, Shield Breaker, Berserk, Hamstring, Timber
+Pickaxe enchants work on blocks in mines. Blocks mined by Explosion/Vein Miner don't count toward the ores stat by default.
+
+**Combat**
+* While you're combat-tagged (10s after PvP damage) a countdown shows above your hotbar.
+* You can't walk (or launch) into a no-PvP region while tagged: you're knocked back and told
+  "Cannot enter safezone while in combat!". `/spawn` and pearls into safe zones are blocked too.
+* **Kill assists:** anyone who dealt at least 2 hearts to the victim in the last 15 seconds (and didn't land the kill)
+  gets an assist (shown in `/stats`, `/top assists`) and 5 coins. Tune it under `assists:` in the config.
+
+**Coins**
+* `/pay <player> <amount>` sends coins to an online player (3s cooldown, every payment is logged to the console).
+* `/resetstats <player> [stats|coins|all]` resets one player. `/resetstats all [stats|coins|all] confirm` wipes everyone.
+  `stats` = kills, deaths, streaks, assists; `coins` = the balance.
 
 **Exploit protection**
 * Combat logging: quitting within 10s of PvP counts as a death for you and a kill for your opponent.
@@ -96,7 +145,7 @@ scoreboard if you want it there too. Chat layout is `ranks.chat-format` in the c
 
 ---------------------------------------------------------------------------------------
 ## 4. Player commands
-`/stats [player]` - `/top [kills|deaths|streak|coins|kdr]` - `/spawn` (blocked for 10s after PvP damage)
+`/stats [player]` - `/top [kills|deaths|assists|ores|streak|coins|kdr]` - `/spawn` (blocked for 10s after PvP damage)
 
 ## Admin commands
 `/setspawn` `/region` `/mine` `/npc` `/launchpad` `/setcoins <player> <amount>` `/boxpvp reload`

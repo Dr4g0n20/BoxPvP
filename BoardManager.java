@@ -29,12 +29,7 @@ public class BoardManager {
             return;
         }
         PlayerStats s = plugin.stats().get(p);
-        ScoreboardManager sm = Bukkit.getScoreboardManager();
-        Scoreboard sb = p.getScoreboard();
-        if (sb == null || sb == sm.getMainScoreboard()) {
-            sb = sm.getNewScoreboard();
-            p.setScoreboard(sb);
-        }
+        Scoreboard sb = scoreboard(p);
         Objective obj = sb.getObjective("boxpvp");
         if (obj == null) {
             obj = sb.registerNewObjective("boxpvp", "dummy");
@@ -51,6 +46,9 @@ public class BoardManager {
                     .replace("%kdr%", Util.kdrStr(s.kills, s.deaths))
                     .replace("%streak%", String.valueOf(s.streak))
                     .replace("%best%", String.valueOf(s.bestStreak))
+                    .replace("%assists%", String.valueOf(s.assists))
+                    .replace("%ores%", String.valueOf(s.ores))
+                    .replace("%title%", titleText(p))
                     .replace("%coins%", Util.fmt(s.coins))
                     .replace("%name%", p.getName())
                     .replace("%rank%", rankText(p));
@@ -77,6 +75,22 @@ public class BoardManager {
             }
         }
         lines.put(p.getUniqueId(), fresh);
+    }
+
+    /** The player's own scoreboard, creating a private one if they are still on the shared main board. */
+    public Scoreboard scoreboard(Player p) {
+        ScoreboardManager sm = Bukkit.getScoreboardManager();
+        Scoreboard sb = p.getScoreboard();
+        if (sb == null || sb == sm.getMainScoreboard()) {
+            sb = sm.getNewScoreboard();
+            p.setScoreboard(sb);
+        }
+        return sb;
+    }
+
+    private String titleText(Player p) {
+        String title = plugin.achievements().chatText(p.getUniqueId());
+        return title == null ? "" : title;
     }
 
     private String rankText(Player p) {

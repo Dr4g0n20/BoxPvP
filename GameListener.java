@@ -30,6 +30,7 @@ import org.bukkit.event.player.PlayerBucketEmptyEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 import org.bukkit.event.player.PlayerTeleportEvent;
@@ -37,6 +38,7 @@ import org.bukkit.event.player.PlayerTeleportEvent.TeleportCause;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.projectiles.ProjectileSource;
+import org.bukkit.util.Vector;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -49,6 +51,15 @@ public class GameListener implements Listener {
     private final Map<UUID, Long> denyCooldown = new HashMap<UUID, Long>();
     private final Map<String, Long> lastKill = new HashMap<String, Long>();
     private final Map<UUID, Long> pearlCooldown = new HashMap<UUID, Long>();
+
+    /** Damage one player has dealt to another recently (for kill assists). */
+    private static class Hit {
+        double damage;
+        long last;
+    }
+
+    // victim -> (attacker -> damage dealt)
+    private final Map<UUID, Map<UUID, Hit>> damageDealt = new HashMap<UUID, Map<UUID, Hit>>();
 
     public GameListener(BoxPvP plugin) {
         this.plugin = plugin;
@@ -76,7 +87,8 @@ public class GameListener implements Listener {
     public void onJoin(PlayerJoinEvent e) {
         final Player p = e.getPlayer();
         plugin.stats().get(p);
-        plugin.ranks().applyTab(p);
+        plugin.achievements().sync(p);
+        plugin.nameTags().onJoin(p);
         if (plugin.getConfig().getBoolean("teleport-to-spawn-on-join", true) && plugin.spawn() != null) {
             p.teleport(plugin.spawn());
         }
@@ -115,6 +127,8 @@ public class GameListener implements Listener {
             Bukkit.broadcastMessage(Util.color("&c" + p.getName() + " &7logged out during combat and was counted as a death."));
         }
 
+        damageDealt.remove(p.getUniqueId());
+        plugin.nameTags().onQuit(p);
         plugin.board().remove(p);
         plugin.pads().forget(p);
         plugin.clearCombat(p);
@@ -184,6 +198,44 @@ public class GameListener implements Listener {
         }
     }
 
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onDamageRecord(EntityDamageByEntityEvent e) {
+        if (!(e.getEntity() instanceof Player)) {
+            return;
+        }
+        Player victim = (Player) e.getEntity();
+        Entity d = e.getDamager();
+        Player attacker = null;
+        if (d instanceof Player) {
+            attacker = (Player) d;
+        } else if (d instanceof Projectile) {
+            ProjectileSource src = ((Projectile) d).getShooter();
+            if (src instanceof Player) {
+                attacker = (Player) src;
+            }
+        }
+        if (attacker == null || attacker.equals(victim)) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long window = (long) (plugin.getConfig().getDouble("assists.window-seconds", 15.0) * 1000.0);
+        Map<UUID, Hit> hits = damageDealt.get(victim.getUniqueId());
+        if (hits == null) {
+            hits = new HashMap<UUID, Hit>();
+            damageDealt.put(victim.getUniqueId(), hits);
+        }
+        Hit h = hits.get(attacker.getUniqueId());
+        if (h == null) {
+            h = new Hit();
+            hits.put(attacker.getUniqueId(), h);
+        }
+        if (now - h.last > window) {
+            h.damage = 0; // old damage no longer counts
+        }
+        h.damage += e.getFinalDamage();
+        h.last = now;
+    }
+
     // ------------------------------------------------------------ death / respawn
 
     @EventHandler(priority = EventPriority.HIGH)
@@ -215,6 +267,7 @@ public class GameListener implements Listener {
         }
         plugin.board().update(victim);
         plugin.clearCombat(victim);
+        damageDealt.remove(victim.getUniqueId());
 
         // Instant respawn: skip the death screen.
         Bukkit.getScheduler().runTaskLater(plugin, new Runnable() {
@@ -234,6 +287,8 @@ public class GameListener implements Listener {
         if (ks.streak > ks.bestStreak) {
             ks.bestStreak = ks.streak;
         }
+        plugin.achievements().check(killer, "kills");
+        plugin.achievements().check(killer, "streak");
 
         // Anti-farm: repeat kills on the same player within the cooldown earn nothing.
         String pair = killer.getUniqueId() + ":" + victim.getUniqueId();
@@ -256,6 +311,8 @@ public class GameListener implements Listener {
             killer.sendMessage(Util.color("&a+" + total + " coins &7(kill streak: &e" + ks.streak + "&7)"));
         }
 
+        awardAssists(killer, victim, farmed);
+
         // Streak rewards (always granted, even if the kill itself was farmed - the streak still counts).
         ConfigurationSection rewards = plugin.getConfig().getConfigurationSection("killstreak.rewards");
         if (rewards != null && rewards.isConfigurationSection(String.valueOf(ks.streak))) {
@@ -266,6 +323,44 @@ public class GameListener implements Listener {
         if (announce > 0 && lostStreak >= announce) {
             Bukkit.broadcastMessage(Util.color("&c" + killer.getName() + " &7ended &c" + victim.getName()
                     + "&7's &e" + lostStreak + " &7kill streak!"));
+        }
+    }
+
+    /** Players who damaged the victim recently (but didn't land the kill) get an assist and a few coins. */
+    private void awardAssists(Player killer, Player victim, boolean farmed) {
+        if (!plugin.getConfig().getBoolean("assists.enabled", true)) {
+            return;
+        }
+        Map<UUID, Hit> hits = damageDealt.get(victim.getUniqueId());
+        if (hits == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        long window = (long) (plugin.getConfig().getDouble("assists.window-seconds", 15.0) * 1000.0);
+        double minDamage = plugin.getConfig().getDouble("assists.min-damage", 4.0);
+        long coins = plugin.getConfig().getLong("assists.coins", 5L);
+        for (Map.Entry<UUID, Hit> en : hits.entrySet()) {
+            if (en.getKey().equals(killer.getUniqueId()) || en.getKey().equals(victim.getUniqueId())) {
+                continue;
+            }
+            Hit h = en.getValue();
+            if (now - h.last > window || h.damage < minDamage) {
+                continue;
+            }
+            Player helper = Bukkit.getPlayer(en.getKey());
+            if (helper == null || !helper.isOnline()) {
+                continue;
+            }
+            PlayerStats hs = plugin.stats().get(helper);
+            hs.assists++;
+            plugin.achievements().check(helper, "assists");
+            if (!farmed && coins > 0) {
+                hs.coins += coins;
+                helper.sendMessage(Util.color("&bAssist! &7You helped kill &f" + victim.getName() + " &7(&6+" + coins + " coins&7)"));
+            } else {
+                helper.sendMessage(Util.color("&bAssist! &7You helped kill &f" + victim.getName()));
+            }
+            plugin.board().update(helper);
         }
     }
 
@@ -426,6 +521,40 @@ public class GameListener implements Listener {
         }
     }
 
+    // ------------------------------------------------------------ no safe-zone entry while in combat
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onMove(PlayerMoveEvent e) {
+        Location from = e.getFrom();
+        Location to = e.getTo();
+        if (to == null || (from.getBlockX() == to.getBlockX() && from.getBlockY() == to.getBlockY()
+                && from.getBlockZ() == to.getBlockZ())) {
+            return;
+        }
+        Player p = e.getPlayer();
+        if (!plugin.inCombat(p) || bypass(p)
+                || !plugin.getConfig().getBoolean("combat-zones.block-entry", true)) {
+            return;
+        }
+        // Only stop movement from a PvP-allowed spot into a no-PvP (safe) spot.
+        if (plugin.regions().allowed(to, "pvp") || !plugin.regions().allowed(from, "pvp")) {
+            return;
+        }
+        Vector push = from.toVector().subtract(to.toVector());
+        push.setY(0);
+        if (push.lengthSquared() < 0.0001) {
+            push = p.getLocation().getDirection().multiply(-1);
+            push.setY(0);
+        }
+        if (push.lengthSquared() < 0.0001) {
+            push = new Vector(0, 0, 1);
+        }
+        push.normalize().multiply(0.6).setY(0.3);
+        e.setTo(from);
+        p.setVelocity(push);
+        deny(p, "&cCannot enter safezone while in combat!");
+    }
+
     // ------------------------------------------------------------ exploit fixes
 
     /** Enderpearl cooldown: refuse to throw while it is running (the pearl is not used up). */
@@ -501,24 +630,32 @@ public class GameListener implements Listener {
         }
     }
 
-    // ------------------------------------------------------------ ranks (chat prefix)
+    // ------------------------------------------------------------ chat: [rank] username [clan]
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onChat(AsyncPlayerChatEvent e) {
         if (!plugin.getConfig().getBoolean("ranks.chat-prefix", true)) {
             return;
         }
-        String prefix = plugin.ranks().prefixOf(e.getPlayer().getUniqueId());
-        if (prefix == null) {
+        String rank = plugin.ranks().prefixOf(e.getPlayer().getUniqueId());
+        if (rank == null) {
+            rank = plugin.achievements().chatText(e.getPlayer().getUniqueId()); // earned title when there's no admin rank
+        }
+        String clan = plugin.clans().prefixOf(e.getPlayer().getUniqueId());
+        if (rank == null && clan == null) {
             return;
         }
-        String fmt = Util.color(plugin.getConfig().getString("ranks.chat-format", "%prefix% &f%player%&7: &f%message%"));
+        String rankText = rank == null ? "" : rank.replace("%", "%%") + " ";
+        String clanText = clan == null ? "" : " " + clan.replace("%", "%%");
+
+        String fmt = Util.color(plugin.getConfig().getString("chat.format", "%rank%&f%player%%clan%&7: &f%message%"));
         fmt = fmt.replace("%", "%%");
-        fmt = fmt.replace("%%prefix%%", prefix.replace("%", "%%"));
+        fmt = fmt.replace("%%rank%%", rankText);
+        fmt = fmt.replace("%%clan%%", clanText);
         fmt = fmt.replace("%%player%%", "%1$s");
         fmt = fmt.replace("%%message%%", "%2$s");
         if (!fmt.contains("%1$s") || !fmt.contains("%2$s")) {
-            fmt = prefix.replace("%", "%%") + " %1$s: %2$s";
+            fmt = rankText + "%1$s" + clanText + ": %2$s";
         }
         e.setFormat(fmt);
     }

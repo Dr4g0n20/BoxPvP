@@ -1,10 +1,13 @@
 package com.boxpvp;
 
+import net.md_5.bungee.api.ChatMessageType;
+import net.md_5.bungee.api.chat.TextComponent;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.entity.Player;
 
 public final class Util {
 
@@ -35,6 +38,15 @@ public final class Util {
         }
         return new Location(w, s.getDouble("x"), s.getDouble("y"), s.getDouble("z"),
                 (float) s.getDouble("yaw"), (float) s.getDouble("pitch"));
+    }
+
+    /** Text above the hotbar. Silently does nothing if the server can't show it. */
+    public static void actionBar(Player p, String msg) {
+        try {
+            p.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(color(msg)));
+        } catch (Throwable ignored) {
+            // no action bar support
+        }
     }
 
     public static String fmt(long n) {

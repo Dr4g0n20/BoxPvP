@@ -1,9 +1,7 @@
 package com.boxpvp;
 
-import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.entity.Player;
 
 import java.io.File;
 import java.io.IOException;
@@ -14,7 +12,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** Cosmetic rank prefixes. Only admins can create ranks and give/take them; ranks grant no permissions. */
+/** Cosmetic labels (ranks or clans). Only admins can create them and give/take them; they grant no permissions. */
 public class RankManager {
 
     public static class Rank {
@@ -33,9 +31,10 @@ public class RankManager {
     private final Map<String, Rank> ranks = new ConcurrentHashMap<String, Rank>();
     private final Map<UUID, String> assigned = new ConcurrentHashMap<UUID, String>();
 
-    public RankManager(BoxPvP plugin) {
+    /** Used for both ranks (ranks.yml) and clans (clans.yml) - they work identically. */
+    public RankManager(BoxPvP plugin, String fileName) {
         this.plugin = plugin;
-        this.file = new File(plugin.getDataFolder(), "ranks.yml");
+        this.file = new File(plugin.getDataFolder(), fileName);
     }
 
     // ------------------------------------------------------------ persistence
@@ -163,37 +162,5 @@ public class RankManager {
     public String prefixOf(UUID id) {
         Rank r = rankOf(id);
         return r == null ? null : Util.color(r.prefix);
-    }
-
-    // ------------------------------------------------------------ tab list
-
-    /** Applies the rank prefix to the tab list. 1.12 limits tab names to 16 characters, so long ones are cut. */
-    public void applyTab(Player p) {
-        if (!plugin.getConfig().getBoolean("ranks.tab-list", true)) {
-            return;
-        }
-        try {
-            String prefix = prefixOf(p.getUniqueId());
-            if (prefix == null) {
-                p.setPlayerListName(null);
-                return;
-            }
-            String name = prefix + " " + p.getName();
-            if (name.length() > 16) {
-                name = name.substring(0, 16);
-                if (name.endsWith("\u00a7")) {
-                    name = name.substring(0, 15);
-                }
-            }
-            p.setPlayerListName(name);
-        } catch (IllegalArgumentException ignored) {
-            // name rejected by the server; leave the default
-        }
-    }
-
-    public void applyTabAll() {
-        for (Player p : Bukkit.getOnlinePlayers()) {
-            applyTab(p);
-        }
     }
 }

@@ -9,7 +9,7 @@ commands:
     usage: /stats [player]
   top:
     description: View leaderboards
-    usage: /top [kills|deaths|streak|coins|kdr]
+    usage: /top [kills|deaths|assists|ores|streak|coins|kdr]
   spawn:
     description: Return to spawn (not while in combat)
     usage: /spawn
@@ -31,7 +31,19 @@ commands:
     usage: /mine <create|delete|list|info|fill|block|regen>
   npc:
     description: Create or remove shop NPCs
-    usage: /npc <create|remove> [seller|buyer]
+    usage: /npc <create|remove> [seller|buyer|upgrader|enchanter]
+  clan:
+    description: Create and give cosmetic clan tags (admin only)
+    usage: /clan <create|setprefix|delete|list|give|take|check>
+  title:
+    description: Show or hide your earned achievement titles
+    usage: /title [name|off]
+  pay:
+    description: Send coins to another player
+    usage: /pay <player> <amount>
+  resetstats:
+    description: Reset stats and/or coins (admin only)
+    usage: /resetstats <player|all> [stats|coins|all] [confirm]
   rank:
     description: Create and give cosmetic rank prefixes (admin only)
     usage: /rank <create|setprefix|delete|list|give|take|check>

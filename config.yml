@@ -57,7 +57,7 @@ killstreak:
 scoreboard:
   enabled: true
   title: "&6&lBOX PVP"
-  # Placeholders: %kills% %deaths% %kdr% %streak% %best% %coins% %name% %rank%
+  # Placeholders: %kills% %deaths% %assists% %ores% %kdr% %streak% %best% %coins% %name% %rank% %title%
   lines:
     - ""
     - "&7Kills: &f%kills%"
@@ -160,8 +160,219 @@ pearls:
   cooldown-seconds: 10         # ender pearl cooldown (0 = off)
   block-into-safe-zones: true  # can't pearl / chorus-fruit from a PvP area into a no-PvP region (pearl is refunded)
 
-# Cosmetic ranks (/rank ...). Admin-only; they grant no permissions.
+# Combat
+combat-timer:
+  actionbar: true              # "In combat: 8s" above the hotbar while you are combat-tagged
+combat-zones:
+  block-entry: true            # combat-tagged players can't walk/launch into no-PvP regions (they're knocked back)
+
+# Kill assists: players who hurt the victim recently (but didn't land the kill) get credit
+assists:
+  enabled: true
+  window-seconds: 15           # damage only counts if dealt within this long before the kill
+  min-damage: 4.0              # at least this much damage (2 hearts) to earn an assist
+  coins: 5                     # coins per assist (0 = stat only)
+
+# /pay <player> <amount>
+pay:
+  enabled: true
+  min-amount: 1
+  cooldown-seconds: 3
+
+# Cosmetic ranks (/rank ...) and clans (/clan ...). Admin-only; they grant no permissions.
+# Shown as  [rank] username [clan]  in chat, above heads and in the tab list.
 ranks:
-  chat-prefix: true
-  tab-list: true               # note: 1.12 cuts tab-list names to 16 characters
-  chat-format: "%prefix% &f%player%&7: &f%message%"
+  chat-prefix: true            # false = leave chat completely alone
+nametags:
+  enabled: true                # rank/clan above heads and in the tab list (1.12 limits each to 16 characters)
+chat:
+  # %rank% %player% %clan% %message%   (%rank% / %clan% are blank for players who don't have one)
+  format: "%rank%&f%player%%clan%&7: &f%message%"
+
+# Achievement titles: cosmetic ranks earned automatically from stats. Reach a tier's amount to earn its title.
+# They show where a rank would (chat, above the head, tab list) for players who have no admin-given rank.
+# Players pick which earned title to show with /title. Stats you can track:
+#   ores (blocks mined in mines)  kills  assists  streak (best killstreak)  sold (items sold to the Buyer)
+# name = full text used in chat and /title.  tag = short text (about 12 characters) for above heads and the tab list.
+achievements:
+  enabled: true
+  broadcast-min-tier: 3        # announce to the whole server from this tier up (0 = never)
+  tracks:
+    grinder:
+      stat: ores
+      tiers:
+        - {amount: 1000,   name: "&a[Master Grinder]",   tag: "&a[MGrind]"}
+        - {amount: 10000,  name: "&b[Elite Grinder]",    tag: "&b[EGrind]"}
+        - {amount: 100000, name: "&d[Ultimate Grinder]", tag: "&d[UGrind]"}
+    slayer:
+      stat: kills
+      tiers:
+        - {amount: 100,   name: "&e[Slayer]",           tag: "&e[Slayer]"}
+        - {amount: 1000,  name: "&6[Elite Slayer]",     tag: "&6[ESlayer]"}
+        - {amount: 10000, name: "&c[Legendary Slayer]", tag: "&c[LSlayer]"}
+    wingman:
+      stat: assists
+      tiers:
+        - {amount: 50,   name: "&a[Helper]",   tag: "&a[Helper]"}
+        - {amount: 500,  name: "&b[Wingman]",   tag: "&b[Wingman]"}
+        - {amount: 5000, name: "&6[Guardian]",  tag: "&6[Guard]"}
+    streaker:
+      stat: streak
+      tiers:
+        - {amount: 10, name: "&a[Rampage]",     tag: "&a[Rampage]"}
+        - {amount: 25, name: "&6[Unstoppable]", tag: "&6[Unstop]"}
+        - {amount: 50, name: "&c[Godlike]",     tag: "&c[Godlike]"}
+    trader:
+      stat: sold
+      tiers:
+        - {amount: 1000,   name: "&a[Merchant]", tag: "&a[Merch]"}
+        - {amount: 10000,  name: "&6[Tycoon]",   tag: "&6[Tycoon]"}
+        - {amount: 100000, name: "&d[Mogul]",    tag: "&d[Mogul]"}
+
+# The Upgrader NPC (/npc create upgrader): hold a pickaxe, sword or axe, right-click it, and pay coins to add enchantments.
+# Each entry: enchant = Bukkit name, max = top level, prices = coins for level 1, level 2, ... (one per level).
+# Up to 9 entries per item type. "enchants" is the PICKAXE list (kept under its original name).
+# Bukkit names: DIG_SPEED = Efficiency, DURABILITY = Unbreaking, LOOT_BONUS_BLOCKS = Fortune, DAMAGE_ALL = Sharpness,
+#   FIRE_ASPECT, KNOCKBACK, MENDING, DAMAGE_UNDEAD = Smite, LOOT_BONUS_MOBS = Looting, SWEEPING_EDGE
+# Note: Fortune multiplies mine drops here, including auto-smelted ingots. Unbreaking and Mending work in mines too
+# (Mending repairs from the XP bottles in your enchanting area). Sharpness / Fire Aspect / Knockback change PvP balance,
+# so price them to suit your server.
+upgrader:
+  title: "&5&lUpgrader"
+  npc-name: "&5&lUpgrader"
+  enchants:
+    - {enchant: DIG_SPEED, name: "Efficiency", max: 5, prices: [100, 250, 500, 1000, 2000]}
+    - {enchant: DURABILITY, name: "Unbreaking", max: 3, prices: [150, 400, 900]}
+    - {enchant: LOOT_BONUS_BLOCKS, name: "Fortune", max: 3, prices: [300, 800, 2000]}
+    - {enchant: MENDING, name: "Mending", max: 1, prices: [1500]}
+  sword-enchants:
+    - {enchant: DAMAGE_ALL, name: "Sharpness", max: 5, prices: [200, 500, 1000, 2000, 4000]}
+    - {enchant: FIRE_ASPECT, name: "Fire Aspect", max: 2, prices: [400, 1200]}
+    - {enchant: KNOCKBACK, name: "Knockback", max: 2, prices: [300, 800]}
+    - {enchant: DURABILITY, name: "Unbreaking", max: 3, prices: [150, 400, 900]}
+    - {enchant: MENDING, name: "Mending", max: 1, prices: [1500]}
+  axe-enchants:
+    - {enchant: DAMAGE_ALL, name: "Sharpness", max: 5, prices: [200, 500, 1000, 2000, 4000]}
+    - {enchant: DIG_SPEED, name: "Efficiency", max: 5, prices: [100, 250, 500, 1000, 2000]}
+    - {enchant: DURABILITY, name: "Unbreaking", max: 3, prices: [150, 400, 900]}
+    - {enchant: MENDING, name: "Mending", max: 1, prices: [1500]}
+
+# ===================================================================================================
+# CUSTOM ENCHANTS
+# Pull them from the Enchanter NPC (/npc create enchanter), apply them to a tool at the Upgrader, level them up with
+# coins there. Every pull gives the enchant at level 1. Each tool has a limited number of custom-enchant slots, which
+# you can also buy at the Upgrader. A pulled enchant is kept on the player's account until applied (it's used up then);
+# right-clicking an applied enchant in the Upgrader removes it and returns it to the collection at level 1.
+# Percent values are percentages (1.0 = 1%). prices = coins to go from level 1->2, 2->3, ... (one entry per upgrade).
+# ===================================================================================================
+enchanter:
+  title: "&d&lEnchanter"
+  npc-name: "&d&lEnchanter"
+
+custom-enchants:
+  enabled: true
+  base-slots: 1                # slots every tool starts with
+  max-slots: 4                 # most slots a tool can have (maximum 9)
+  slot-prices: [1500, 4000, 10000]   # coins to unlock slot 2, 3, 4 ...
+  pull-prices:
+    random: 100                # random tool, random enchant
+    tool: 1000                 # you choose the tool, random enchant
+    choose: 10000              # you choose the exact enchant
+  count-bonus-blocks-as-ores: false  # do blocks mined by Explosion / Vein Miner count toward the ores stat + Grinder titles?
+  enchants:
+    # ---------- PICKAXE (only works on mine blocks, except where noted) ----------
+    explosion:                 # chance to mine every mine block in a sphere (cosmetic explosion only - nothing is destroyed)
+      max: 5
+      prices: [500, 1500, 4000, 10000]
+      chance-per-level: 1.0
+      radius: 3
+      max-blocks: 125          # safety cap per explosion
+    vein_miner:                # chance to mine the whole connected ore vein
+      max: 5
+      prices: [400, 1200, 3000, 8000]
+      chance-per-level: 4.0
+      base-blocks: 4           # vein size = base-blocks + blocks-per-level * level
+      blocks-per-level: 2
+    jackpot:                   # chance for a bonus gem when you mine a block
+      max: 5
+      prices: [400, 1200, 3000, 8000]
+      chance-per-level: 1.0
+      items: ["DIAMOND*1", "EMERALD*1"]   # one is picked at random (MATERIAL[:data][*amount])
+    midas:                     # chance for instant bonus coins when you mine a block
+      max: 5
+      prices: [300, 900, 2500, 6000]
+      chance-per-level: 3.0
+      coins-per-level: 2       # bonus is 1 to (coins-per-level * level) coins
+    momentum:                  # mine quickly to stack Haste (level = highest Haste you can reach)
+      max: 3
+      prices: [500, 2000]
+      window-seconds: 3        # keep mining within this gap to keep the streak
+      blocks-per-stage: 5      # every 5 blocks raises Haste by one level
+      duration-ticks: 80
+    quick_regen:               # blocks YOU mine regenerate faster
+      max: 5
+      prices: [300, 900, 2500, 6000]
+      reduction-percent-per-level: 10
+    # ---------- SWORD (PvP) ----------
+    lifesteal:                 # heal a percentage of the damage you deal
+      max: 5
+      prices: [400, 1200, 3000, 8000]
+      percent-per-level: 4
+    execute:                   # bonus damage against low-health targets
+      max: 5
+      prices: [400, 1200, 3000, 8000]
+      threshold-percent: 30
+      bonus-percent-per-level: 6
+    frenzy:                    # consecutive hits stack bonus damage
+      max: 5
+      prices: [400, 1200, 3000, 8000]
+      window-seconds: 3
+      max-stacks: 5
+      percent-per-stack-per-level: 1.0
+    streak_surge:              # bonus damage from your current killstreak
+      max: 5
+      prices: [500, 1500, 4000, 10000]
+      percent-per-streak-per-level: 0.4
+      cap-percent: 30
+    frostbite:                 # chance to slow the target
+      max: 5
+      prices: [300, 900, 2500, 6000]
+      chance-per-level: 6
+      seconds: 2
+      slow-amplifier: 1        # 0 = Slowness I, 1 = Slowness II
+    thunderstrike:             # chance for a lightning visual and bonus damage
+      max: 5
+      prices: [400, 1200, 3000, 8000]
+      chance-per-level: 3
+      bonus-damage: 3.0
+    hunters_mark:              # your hits make the target glow (stops camping)
+      max: 3
+      prices: [300, 900]
+      seconds-per-level: 1
+    # ---------- AXE ----------
+    cleave:                    # your hit also damages other players near the target
+      max: 5
+      prices: [500, 1500, 4000, 10000]
+      radius: 2.5
+      percent-per-level: 10
+    shield_breaker:            # a blocking target's shield stays disabled longer
+      max: 5
+      prices: [300, 900, 2500, 6000]
+      base-ticks: 100
+      ticks-per-level: 40
+    berserk:                   # more damage while you are hurt
+      max: 5
+      prices: [400, 1200, 3000, 8000]
+      health-threshold-percent: 50
+      bonus-percent-per-level: 4
+    hamstring:                 # chance to slow the target
+      max: 5
+      prices: [300, 900, 2500, 6000]
+      chance-per-level: 8
+      seconds: 2
+      slow-amplifier: 0
+    timber:                    # chance to fell the whole tree when you chop a log (respects build protection)
+      max: 5
+      prices: [300, 900, 2500, 6000]
+      chance-per-level: 20
+      max-blocks: 40

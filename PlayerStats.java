@@ -10,6 +10,9 @@ public class PlayerStats {
     public int deaths;
     public int streak;
     public int bestStreak;
+    public int assists;
+    public int ores;
+    public int sold;
     public long coins;
 
     public PlayerStats(UUID id, String name) {

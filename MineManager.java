@@ -247,21 +247,57 @@ public class MineManager {
 
     public void handleBreak(BlockBreakEvent e, Mine m) {
         e.setCancelled(true);
-        final Player p = e.getPlayer();
-        final Block b = e.getBlock();
+        Player p = e.getPlayer();
+        Block b = e.getBlock();
         Material type = b.getType();
         if (type == Material.BEDROCK || type == Material.AIR) {
             return;
         }
-        if (plugin.getConfig().getBoolean("mines.require-pickaxe-tier", true)) {
-            Integer need = TIER.get(type);
-            if (need != null && toolTier(p.getInventory().getItemInMainHand()) < need) {
-                p.sendMessage(Util.color("&cYou need a better pickaxe to mine this."));
-                return;
-            }
+        if (!hasTier(p, type)) {
+            p.sendMessage(Util.color("&cYou need a better pickaxe to mine this."));
+            return;
         }
+        mineOne(p, m, b);
+        plugin.stats().get(p).ores++;
+        plugin.achievements().check(p, "ores");
+        if (plugin.getConfig().getBoolean("mines.tool-wear", true)) {
+            wear(p);
+        }
+        plugin.enchantEffects().onMined(p, m, b, type); // custom enchants (Explosion, Vein Miner, Midas...)
+    }
 
+    private boolean hasTier(Player p, Material type) {
+        if (!plugin.getConfig().getBoolean("mines.require-pickaxe-tier", true)) {
+            return true;
+        }
+        Integer need = TIER.get(type);
+        return need == null || toolTier(p.getInventory().getItemInMainHand()) >= need;
+    }
+
+    /** Mines an extra block for a custom enchant (Explosion, Vein Miner). Returns false if it couldn't be mined. */
+    public boolean mineBonus(Player p, Mine m, Block b) {
+        Material type = b.getType();
+        if (type == Material.BEDROCK || type == Material.AIR || !m.contains(b) || !hasTier(p, type)) {
+            return false;
+        }
+        mineOne(p, m, b);
+        if (plugin.getConfig().getBoolean("custom-enchants.count-bonus-blocks-as-ores")) {
+            plugin.stats().get(p).ores++;
+            plugin.achievements().check(p, "ores");
+        }
+        return true;
+    }
+
+    /** Gives the (smelted, fortune-boosted) drop, turns the block into bedrock and schedules its regeneration. */
+    private void mineOne(Player p, Mine m, final Block b) {
+        ItemStack hand = p.getInventory().getItemInMainHand();
         ItemStack drop = smeltDrop(baseDrop(b));
+        // Fortune (from the Upgrader or an enchanting table) multiplies what a mined block gives.
+        int fortune = hand.getEnchantmentLevel(Enchantment.LOOT_BONUS_BLOCKS);
+        if (fortune > 0) {
+            int multiplier = 1 + Math.max(0, rnd.nextInt(fortune + 2) - 1);
+            drop.setAmount(Math.min(drop.getMaxStackSize(), drop.getAmount() * multiplier));
+        }
         b.setType(Material.BEDROCK);
         pending.add(b);
 
@@ -269,12 +305,12 @@ public class MineManager {
         for (ItemStack rest : left.values()) {
             p.getWorld().dropItemNaturally(p.getLocation(), rest);
         }
-        if (plugin.getConfig().getBoolean("mines.tool-wear", true)) {
-            wear(p);
-        }
 
         final Material next = pick(m);
         int secs = m.regenSeconds > 0 ? m.regenSeconds : plugin.getConfig().getInt("mines.regen-seconds", 8);
+        // Quick Regen (custom enchant) makes blocks you mine come back sooner.
+        double factor = plugin.enchantEffects().regenMultiplier(hand);
+        long ticks = Math.max(10L, (long) (Math.max(1, secs) * 20L * factor));
         Bukkit.getScheduler().runTaskLater(plugin, new Runnable() {
             @Override
             public void run() {
@@ -282,7 +318,7 @@ public class MineManager {
                     b.setType(next);
                 }
             }
-        }, Math.max(1, secs) * 20L);
+        }, ticks);
     }
 
     private static int toolTier(ItemStack it) {

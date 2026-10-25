@@ -34,6 +34,8 @@ public class ShopManager implements Listener {
 
     public static final String TAG_SELLER = "boxpvp_seller";
     public static final String TAG_BUYER = "boxpvp_buyer";
+    public static final String TAG_UPGRADER = "boxpvp_upgrader";
+    public static final String TAG_ENCHANTER = "boxpvp_enchanter";
 
     private static class SellEntry {
         final ItemKey key;
@@ -155,6 +157,12 @@ public class ShopManager implements Listener {
             if (t.equals(TAG_BUYER)) {
                 return "buyer";
             }
+            if (t.equals(TAG_UPGRADER)) {
+                return "upgrader";
+            }
+            if (t.equals(TAG_ENCHANTER)) {
+                return "enchanter";
+            }
         }
         return null;
     }
@@ -174,6 +182,40 @@ public class ShopManager implements Listener {
                 seller ? "shop.seller-npc-name" : "shop.buyer-npc-name", seller ? "&6&lSeller" : "&b&lBuyer")));
         v.setCustomNameVisible(true);
         v.addScoreboardTag(seller ? TAG_SELLER : TAG_BUYER);
+    }
+
+    /** Spawns the Upgrader NPC (enchants the pickaxe you hold, for coins). */
+    public void spawnUpgrader(Player p) {
+        Location loc = p.getLocation();
+        loc.setPitch(0f);
+        loc.setYaw(loc.getYaw() + 180f);
+        Villager v = loc.getWorld().spawn(loc, Villager.class);
+        v.setAI(false);
+        v.setInvulnerable(true);
+        v.setSilent(true);
+        v.setCollidable(false);
+        v.setRemoveWhenFarAway(false);
+        v.setProfession(Villager.Profession.PRIEST);
+        v.setCustomName(Util.color(plugin.getConfig().getString("upgrader.npc-name", "&5&lUpgrader")));
+        v.setCustomNameVisible(true);
+        v.addScoreboardTag(TAG_UPGRADER);
+    }
+
+    /** Spawns the Enchanter NPC (players spend coins to pull custom enchants). */
+    public void spawnEnchanter(Player p) {
+        Location loc = p.getLocation();
+        loc.setPitch(0f);
+        loc.setYaw(loc.getYaw() + 180f);
+        Villager v = loc.getWorld().spawn(loc, Villager.class);
+        v.setAI(false);
+        v.setInvulnerable(true);
+        v.setSilent(true);
+        v.setCollidable(false);
+        v.setRemoveWhenFarAway(false);
+        v.setProfession(Villager.Profession.LIBRARIAN);
+        v.setCustomName(Util.color(plugin.getConfig().getString("enchanter.npc-name", "&d&lEnchanter")));
+        v.setCustomNameVisible(true);
+        v.addScoreboardTag(TAG_ENCHANTER);
     }
 
     /** Removes the nearest shop NPC within 6 blocks. Returns false if none found. */
@@ -205,6 +247,14 @@ public class ShopManager implements Listener {
         }
         e.setCancelled(true);
         if (e.getHand() != EquipmentSlot.HAND) {
+            return;
+        }
+        if (type.equals("upgrader")) {
+            plugin.upgrader().open(e.getPlayer());
+            return;
+        }
+        if (type.equals("enchanter")) {
+            plugin.enchanter().open(e.getPlayer());
             return;
         }
         // Buyer NPC = players SELL to it (sell menu). Seller NPC = players BUY from it (buy menu).
@@ -490,6 +540,8 @@ public class ShopManager implements Listener {
         take(p, se.key, amount);
         long gain = se.price * amount;
         plugin.stats().get(p).coins += gain;
+        plugin.stats().get(p).sold += amount;
+        plugin.achievements().check(p, "sold");
         plugin.board().update(p);
         p.sendMessage(Util.color("&aSold &f" + amount + "x " + se.display() + " &afor &6" + Util.fmt(gain) + " coins&a."));
         p.playSound(p.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.6f, 1.2f);
@@ -511,6 +563,8 @@ public class ShopManager implements Listener {
             return;
         }
         plugin.stats().get(p).coins += gain;
+        plugin.stats().get(p).sold += items;
+        plugin.achievements().check(p, "sold");
         plugin.board().update(p);
         p.sendMessage(Util.color("&aSold &f" + items + " &aitems for &6" + Util.fmt(gain) + " coins&a."));
         p.playSound(p.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.0f);

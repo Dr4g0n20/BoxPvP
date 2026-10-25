@@ -39,6 +39,9 @@ public class StatsManager {
                 ps.deaths = s.getInt("deaths");
                 ps.streak = s.getInt("streak");
                 ps.bestStreak = s.getInt("best");
+                ps.assists = s.getInt("assists");
+                ps.ores = s.getInt("ores");
+                ps.sold = s.getInt("sold");
                 ps.coins = s.getLong("coins");
                 map.put(id, ps);
             } catch (IllegalArgumentException ignored) {
@@ -56,6 +59,9 @@ public class StatsManager {
             c.set(k + ".deaths", ps.deaths);
             c.set(k + ".streak", ps.streak);
             c.set(k + ".best", ps.bestStreak);
+            c.set(k + ".assists", ps.assists);
+            c.set(k + ".ores", ps.ores);
+            c.set(k + ".sold", ps.sold);
             c.set(k + ".coins", ps.coins);
         }
         try {
@@ -75,6 +81,26 @@ public class StatsManager {
         return ps;
     }
 
+    public List<PlayerStats> all() {
+        return new ArrayList<PlayerStats>(map.values());
+    }
+
+    /** Resets stats (kills/deaths/streaks/assists) and/or coins for one player. */
+    public void reset(PlayerStats ps, boolean stats, boolean coins) {
+        if (stats) {
+            ps.kills = 0;
+            ps.deaths = 0;
+            ps.streak = 0;
+            ps.bestStreak = 0;
+            ps.assists = 0;
+            ps.ores = 0;
+            ps.sold = 0;
+        }
+        if (coins) {
+            ps.coins = 0;
+        }
+    }
+
     public PlayerStats byName(String name) {
         for (PlayerStats ps : map.values()) {
             if (ps.name.equalsIgnoreCase(name)) {
@@ -91,6 +117,12 @@ public class StatsManager {
             cmp = Comparator.comparingInt((PlayerStats a) -> a.deaths);
         } else if (type.equals("streak")) {
             cmp = Comparator.comparingInt((PlayerStats a) -> a.bestStreak);
+        } else if (type.equals("ores")) {
+            cmp = Comparator.comparingInt((PlayerStats a) -> a.ores);
+        } else if (type.equals("sold")) {
+            cmp = Comparator.comparingInt((PlayerStats a) -> a.sold);
+        } else if (type.equals("assists")) {
+            cmp = Comparator.comparingInt((PlayerStats a) -> a.assists);
         } else if (type.equals("coins")) {
             cmp = Comparator.comparingLong((PlayerStats a) -> a.coins);
         } else if (type.equals("kdr")) {
@@ -108,6 +140,12 @@ public class StatsManager {
                 return String.valueOf(ps.deaths);
             case "streak":
                 return String.valueOf(ps.bestStreak);
+            case "ores":
+                return Util.fmt(ps.ores);
+            case "sold":
+                return Util.fmt(ps.sold);
+            case "assists":
+                return String.valueOf(ps.assists);
             case "coins":
                 return Util.fmt(ps.coins);
             case "kdr":

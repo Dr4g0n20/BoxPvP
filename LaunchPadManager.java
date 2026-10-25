@@ -270,6 +270,12 @@ public class LaunchPadManager implements Listener {
             }
             return;
         }
+        if (plugin.inCombat(p) && p.getGameMode() != org.bukkit.GameMode.CREATIVE
+                && !plugin.regions().allowed(pad.landing, "pvp")) {
+            lastLaunch.put(p.getUniqueId(), now);
+            p.sendMessage(Util.color("&cCannot enter safezone while in combat!"));
+            return;
+        }
         lastLaunch.put(p.getUniqueId(), now);
         launch(p, pad);
     }
