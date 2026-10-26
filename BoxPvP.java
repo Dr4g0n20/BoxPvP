@@ -36,12 +36,19 @@ public class BoxPvP extends JavaPlugin {
     private EnchantStore enchantStore;
     private EnchantEffects enchantEffects;
     private EnchanterManager enchanter;
+    private BackupManager backups;
+    private ActivityManager activity;
+    private BountyManager bounty;
+    private GuideManager guide;
+    private AdminMenu adminMenu;
     private Location spawn;
     private final Map<UUID, Tag> combat = new HashMap<UUID, Tag>();
 
     @Override
     public void onEnable() {
         saveDefaultConfig();
+        backups = new BackupManager(this);
+        backups.backupNow(); // snapshot of the previous run's data before anything is loaded
         loadSpawn();
 
         stats = new StatsManager(this);
@@ -60,6 +67,10 @@ public class BoxPvP extends JavaPlugin {
         enchantStore = new EnchantStore(this);
         enchantEffects = new EnchantEffects(this);
         enchanter = new EnchanterManager(this);
+        activity = new ActivityManager(this);
+        bounty = new BountyManager(this);
+        guide = new GuideManager(this);
+        adminMenu = new AdminMenu(this);
 
         stats.load();
         regions.load();
@@ -80,10 +91,13 @@ public class BoxPvP extends JavaPlugin {
         Bukkit.getPluginManager().registerEvents(upgrader, this);
         Bukkit.getPluginManager().registerEvents(enchantEffects, this);
         Bukkit.getPluginManager().registerEvents(enchanter, this);
+        Bukkit.getPluginManager().registerEvents(activity, this);
+        Bukkit.getPluginManager().registerEvents(guide, this);
+        Bukkit.getPluginManager().registerEvents(adminMenu, this);
         dummies.start();
 
         Commands cmds = new Commands(this);
-        String[] names = {"stats", "top", "spawn", "setspawn", "setcoins", "boxpvp", "region", "mine", "npc", "launchpad", "dummy", "rank", "clan", "pay", "resetstats", "title"};
+        String[] names = {"stats", "top", "spawn", "setspawn", "setcoins", "boxpvp", "region", "mine", "npc", "launchpad", "dummy", "rank", "clan", "pay", "resetstats", "title", "enchants", "guide", "bounties"};
         for (String name : names) {
             PluginCommand pc = getCommand(name);
             if (pc != null) {
@@ -93,6 +107,8 @@ public class BoxPvP extends JavaPlugin {
         }
 
         regions.startRain();
+        backups.start();
+        activity.start();
 
         long period = Math.max(1L, getConfig().getLong("autosave-minutes", 5L)) * 60L * 20L;
         Bukkit.getScheduler().runTaskTimer(this, new Runnable() {
@@ -226,6 +242,26 @@ public class BoxPvP extends JavaPlugin {
         return enchanter;
     }
 
+    public BackupManager backups() {
+        return backups;
+    }
+
+    public ActivityManager activity() {
+        return activity;
+    }
+
+    public BountyManager bounty() {
+        return bounty;
+    }
+
+    public GuideManager guide() {
+        return guide;
+    }
+
+    public AdminMenu adminMenu() {
+        return adminMenu;
+    }
+
     /** A config section from the server's config.yml, or from the built-in defaults if the file doesn't have it yet. */
     public ConfigurationSection sectionOrDefault(String path) {
         ConfigurationSection s = getConfig().getConfigurationSection(path);
@@ -260,7 +296,7 @@ public class BoxPvP extends JavaPlugin {
         YamlConfiguration c = new YamlConfiguration();
         Util.saveLoc(c, "spawn", spawn);
         try {
-            c.save(dataFile());
+            Util.saveSafely(c, dataFile());
         } catch (IOException e) {
             getLogger().warning("Could not save data.yml: " + e.getMessage());
         }

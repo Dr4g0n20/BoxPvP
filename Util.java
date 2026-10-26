@@ -7,7 +7,14 @@ import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
+
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 
 public final class Util {
 
@@ -46,6 +53,24 @@ public final class Util {
             p.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(color(msg)));
         } catch (Throwable ignored) {
             // no action bar support
+        }
+    }
+
+    /**
+     * Saves a YAML file without ever leaving a half-written file behind: it writes to a temporary file first and then
+     * swaps it in, so a crash in the middle of a save can't corrupt the real data file.
+     */
+    public static void saveSafely(YamlConfiguration c, File file) throws IOException {
+        File parent = file.getParentFile();
+        if (parent != null && !parent.exists()) {
+            parent.mkdirs();
+        }
+        File tmp = new File(file.getPath() + ".tmp");
+        c.save(tmp);
+        try {
+            Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException ex) {
+            Files.move(tmp.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING);
         }
     }
 

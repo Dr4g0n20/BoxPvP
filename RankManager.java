@@ -78,7 +78,7 @@ public class RankManager {
             c.set("players." + en.getKey().toString(), en.getValue());
         }
         try {
-            c.save(file);
+            Util.saveSafely(c, file);
         } catch (IOException e) {
             plugin.getLogger().warning("Could not save ranks.yml: " + e.getMessage());
         }

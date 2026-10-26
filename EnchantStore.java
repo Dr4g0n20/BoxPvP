@@ -63,7 +63,7 @@ public class EnchantStore {
             }
         }
         try {
-            c.save(file);
+            Util.saveSafely(c, file);
         } catch (IOException e) {
             plugin.getLogger().warning("Could not save enchants.yml: " + e.getMessage());
         }
@@ -86,6 +86,23 @@ public class EnchantStore {
         }
         m.put(enchantId, count(id, enchantId) + amount);
         save();
+    }
+
+    /** A copy of everything this player owns (enchant id -> copies). */
+    public Map<String, Integer> all(UUID id) {
+        Map<String, Integer> m = tokens.get(id);
+        return m == null ? new HashMap<String, Integer>() : new HashMap<String, Integer>(m);
+    }
+
+    /** Removes up to amount copies; returns how many were actually removed. */
+    public int remove(UUID id, String enchantId, int amount) {
+        int have = count(id, enchantId);
+        int n = Math.min(have, Math.max(0, amount));
+        if (n > 0) {
+            tokens.get(id).put(enchantId, have - n);
+            save();
+        }
+        return n;
     }
 
     /** Uses up one copy. Returns false if the player has none. */

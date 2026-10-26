@@ -89,6 +89,9 @@ public class GameListener implements Listener {
         plugin.stats().get(p);
         plugin.achievements().sync(p);
         plugin.nameTags().onJoin(p);
+        if (!p.hasPlayedBefore()) {
+            plugin.guide().welcome(p);
+        }
         if (plugin.getConfig().getBoolean("teleport-to-spawn-on-join", true) && plugin.spawn() != null) {
             p.teleport(plugin.spawn());
         }
@@ -289,6 +292,7 @@ public class GameListener implements Listener {
         }
         plugin.achievements().check(killer, "kills");
         plugin.achievements().check(killer, "streak");
+        plugin.bounty().announce(killer, ks.streak); // a bounty appears / grows as the streak climbs
 
         // Anti-farm: repeat kills on the same player within the cooldown earn nothing.
         String pair = killer.getUniqueId() + ":" + victim.getUniqueId();
@@ -298,6 +302,7 @@ public class GameListener implements Listener {
         boolean farmed = last != null && now - last < cooldown;
         lastKill.put(pair, now);
 
+        boolean bountyPaid = false;
         if (farmed) {
             killer.sendMessage(Util.color("&cNo coins - you killed &f" + victim.getName() + " &calready very recently."));
         } else {
@@ -309,6 +314,15 @@ public class GameListener implements Listener {
             long total = coins + Math.max(0L, bonus) + Math.max(0L, breakBonus);
             ks.coins += total;
             killer.sendMessage(Util.color("&a+" + total + " coins &7(kill streak: &e" + ks.streak + "&7)"));
+
+            // Bounty on the victim's streak goes to whoever ended it.
+            long bounty = plugin.bounty().bountyFor(lostStreak);
+            if (bounty > 0) {
+                ks.coins += bounty;
+                bountyPaid = true;
+                Bukkit.broadcastMessage(Util.color("&6&lBOUNTY CLAIMED! &e" + killer.getName() + " &7collected &6" + Util.fmt(bounty)
+                        + " coins &7for ending &c" + victim.getName() + "&7's &e" + lostStreak + " &7kill streak!"));
+            }
         }
 
         awardAssists(killer, victim, farmed);
@@ -320,7 +334,7 @@ public class GameListener implements Listener {
         }
 
         int announce = plugin.getConfig().getInt("killstreak.announce-end-at", 5);
-        if (announce > 0 && lostStreak >= announce) {
+        if (announce > 0 && lostStreak >= announce && !bountyPaid) {
             Bukkit.broadcastMessage(Util.color("&c" + killer.getName() + " &7ended &c" + victim.getName()
                     + "&7's &e" + lostStreak + " &7kill streak!"));
         }
@@ -402,7 +416,8 @@ public class GameListener implements Listener {
         if (s != null) {
             e.setRespawnLocation(s);
         }
-        plugin.pads().endImmunity(p);
+        // Respawn protection (ends early if the player attacks someone).
+        plugin.pads().grantImmunity(p, plugin.getConfig().getDouble("respawn-protection.seconds", 5.0));
         Bukkit.getScheduler().runTaskLater(plugin, new Runnable() {
             @Override
             public void run() {

@@ -65,7 +65,7 @@ public class StatsManager {
             c.set(k + ".coins", ps.coins);
         }
         try {
-            c.save(file);
+            Util.saveSafely(c, file);
         } catch (IOException e) {
             plugin.getLogger().warning("Could not save stats.yml: " + e.getMessage());
         }

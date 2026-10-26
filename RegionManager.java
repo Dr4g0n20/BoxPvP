@@ -109,7 +109,7 @@ public class RegionManager {
             }
         }
         try {
-            c.save(file);
+            Util.saveSafely(c, file);
         } catch (IOException e) {
             plugin.getLogger().warning("Could not save regions.yml: " + e.getMessage());
         }

@@ -134,7 +134,7 @@ public class MineManager {
             }
         }
         try {
-            c.save(file);
+            Util.saveSafely(c, file);
         } catch (IOException e) {
             plugin.getLogger().warning("Could not save mines.yml: " + e.getMessage());
         }

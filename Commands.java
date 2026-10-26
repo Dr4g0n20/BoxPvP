@@ -100,6 +100,15 @@ public class Commands implements CommandExecutor, TabCompleter {
             case "title":
                 title(sender, a);
                 return true;
+            case "enchants":
+                enchantsAdmin(sender, a);
+                return true;
+            case "guide":
+                guide(sender);
+                return true;
+            case "bounties":
+                bounties(sender);
+                return true;
             case "resetstats":
                 resetStats(sender, a);
                 return true;
@@ -210,10 +219,242 @@ public class Commands implements CommandExecutor, TabCompleter {
             msg(sender, "&aConfig, regions, mines, shop and launch pads reloaded.");
             return;
         }
-        msg(sender, "&6BoxPvP &7commands: /stats, /top, /spawn, /pay, /title");
-        if (sender.hasPermission("boxpvp.admin")) {
-            sender.sendMessage(Util.color("&7Admin: /setspawn, /region, /mine, /npc, /dummy, /launchpad, /rank, /clan, /resetstats, /setcoins, /boxpvp reload"));
+        if (a.length > 0 && a[0].equalsIgnoreCase("check")) {
+            if (!admin(sender)) {
+                return;
+            }
+            List<String> problems = new ConfigChecker(plugin).run();
+            if (problems.isEmpty()) {
+                msg(sender, "&aConfig check: no problems found.");
+            } else {
+                msg(sender, "&eConfig check found &f" + problems.size() + " &eproblem(s):");
+                for (String s : problems) {
+                    sender.sendMessage(Util.color("&c- " + s));
+                }
+            }
+            return;
         }
+        if (a.length > 0 && a[0].equalsIgnoreCase("backup")) {
+            if (!admin(sender)) {
+                return;
+            }
+            String name = plugin.backups().backupNow();
+            msg(sender, name == null ? "&cBackup failed - see the server console." : "&aBackup saved to &fplugins/BoxPvP/backups/" + name);
+            return;
+        }
+        if (a.length > 0 && a[0].equalsIgnoreCase("menu")) {
+            if (!admin(sender)) {
+                return;
+            }
+            Player p = player(sender);
+            if (p != null) {
+                plugin.adminMenu().open(p);
+            }
+            return;
+        }
+        if (a.length > 0 && a[0].equalsIgnoreCase("zones")) {
+            if (!admin(sender)) {
+                return;
+            }
+            zones(sender);
+            return;
+        }
+        msg(sender, "&6BoxPvP &7commands: /stats, /top, /spawn, /pay, /title, /bounties, /guide");
+        if (sender.hasPermission("boxpvp.admin")) {
+            sender.sendMessage(Util.color("&7Admin: /setspawn, /region, /mine, /npc, /dummy, /launchpad, /rank, /clan, /resetstats, /setcoins, /enchants, /boxpvp reload|check|backup|menu|zones"));
+        }
+    }
+
+    // ============================================================ /boxpvp zones (text overview)
+
+    private void zones(CommandSender sender) {
+        sender.sendMessage(Util.color("&8&m      &r &6All zones &8&m      "));
+        org.bukkit.Location s = plugin.spawn();
+        sender.sendMessage(Util.color("&eSpawn: &f" + (s == null ? "not set" : s.getWorld().getName() + " " + s.getBlockX() + ", " + s.getBlockY() + ", " + s.getBlockZ())));
+        sender.sendMessage(Util.color("&eRegions (&f" + plugin.regions().all().size() + "&e):"));
+        for (Region r : plugin.regions().all()) {
+            StringBuilder flags = new StringBuilder();
+            for (Map.Entry<String, Boolean> en : r.flags.entrySet()) {
+                flags.append(en.getValue() ? "&a" : "&c").append(en.getKey()).append(" ");
+            }
+            sender.sendMessage(Util.color("&7- &f" + r.name + " &7[" + r.world + "] " + r.minX + "," + r.minY + "," + r.minZ + " -> "
+                    + r.maxX + "," + r.maxY + "," + r.maxZ + " &7prio " + r.priority + (r.decaySeconds > 0 ? " decay " + r.decaySeconds + "s" : "")
+                    + " " + flags));
+        }
+        sender.sendMessage(Util.color("&eMines (&f" + plugin.mines().all().size() + "&e):"));
+        for (Mine m : plugin.mines().all()) {
+            sender.sendMessage(Util.color("&7- &f" + m.name + " &7[" + m.world + "] " + m.minX + "," + m.minY + "," + m.minZ + " -> "
+                    + m.maxX + "," + m.maxY + "," + m.maxZ));
+        }
+        sender.sendMessage(Util.color("&eLaunch pads (&f" + plugin.pads().all().size() + "&e):"));
+        for (LaunchPadManager.Pad pad : plugin.pads().all()) {
+            sender.sendMessage(Util.color("&7- &f" + pad.name + " &7[" + pad.world + "] pad " + pad.x + "," + pad.y + "," + pad.z + " -> lands "
+                    + (pad.landing == null ? "&cNOT SET" : pad.landing.getBlockX() + "," + pad.landing.getBlockY() + "," + pad.landing.getBlockZ())));
+        }
+        sender.sendMessage(Util.color("&7Tip: /boxpvp menu shows all of this in a clickable menu (with teleports)."));
+    }
+
+    // ============================================================ /guide, /bounties
+
+    private void guide(CommandSender sender) {
+        Player p = player(sender);
+        if (p != null) {
+            plugin.guide().open(p);
+        }
+    }
+
+    private void bounties(CommandSender sender) {
+        List<BountyManager.Bounty> list = plugin.bounty().current();
+        sender.sendMessage(Util.color("&8&m      &r &6Bounties &8&m      "));
+        if (list.isEmpty()) {
+            sender.sendMessage(Util.color("&7No bounties right now. Get a kill streak of &f"
+                    + plugin.getConfig().getInt("bounty.min-streak", 5) + " &7to put one on yourself!"));
+            return;
+        }
+        for (BountyManager.Bounty b : list) {
+            sender.sendMessage(Util.color("&e" + b.name + " &7- &c" + b.streak + " &7streak - &6" + Util.fmt(b.coins) + " coins"));
+        }
+    }
+
+    // ============================================================ /enchants (admin tools)
+
+    private CustomEnchant findEnchant(String s) {
+        CustomEnchant ce = CustomEnchant.byId(s.toLowerCase());
+        return ce != null ? ce : CustomEnchant.byName(s.replace('_', ' '));
+    }
+
+    private void enchantsAdmin(CommandSender sender, String[] a) {
+        if (!admin(sender)) {
+            return;
+        }
+        EnchantStore store = plugin.enchantStore();
+        EnchantSettings cs = plugin.enchantSettings();
+        if (a.length == 0) {
+            msg(sender, "&7/enchants give <player> <enchant> [amount]  |  take <player> <enchant> [amount]  |  list <player>");
+            msg(sender, "&7/enchants slots <number>   &8(sets the slots on the tool in your hand)");
+            msg(sender, "&7/enchants apply <enchant> [level]   &8(force-applies to the tool in your hand, for testing)");
+            msg(sender, "&7/enchants strip   &8(removes all custom enchants from the tool in your hand)");
+            msg(sender, "&7Enchants: &f" + enchantNames());
+            return;
+        }
+        String sub = a[0].toLowerCase();
+        switch (sub) {
+            case "give":
+            case "take": {
+                CustomEnchant ce = a.length > 2 ? findEnchant(a[2]) : null;
+                UUID id = a.length > 1 ? resolveId(a[1]) : null;
+                if (ce == null || id == null) {
+                    msg(sender, "&cUsage: /enchants " + sub + " <player> <enchant> [amount]   (known players only)");
+                    break;
+                }
+                Integer amt = a.length > 3 ? Util.parseInt(a[3]) : Integer.valueOf(1);
+                if (amt == null || amt < 1 || amt > 1000) {
+                    msg(sender, "&cAmount must be 1-1000.");
+                    break;
+                }
+                if (sub.equals("give")) {
+                    store.add(id, ce.id, amt);
+                    Player online = Bukkit.getPlayer(id);
+                    if (online != null) {
+                        msg(online, "&dAn admin gave you &f" + amt + "x " + ce.name + " &d(apply it at the Upgrader).");
+                    }
+                    msg(sender, "&aGave &f" + amt + "x " + ce.name + " &ato &f" + a[1] + "&a.");
+                } else {
+                    int removed = store.remove(id, ce.id, amt);
+                    msg(sender, "&aRemoved &f" + removed + "x " + ce.name + " &afrom &f" + a[1] + "&a.");
+                }
+                break;
+            }
+            case "list": {
+                UUID id = a.length > 1 ? resolveId(a[1]) : null;
+                if (id == null) {
+                    msg(sender, "&cUsage: /enchants list <player>");
+                    break;
+                }
+                Map<String, Integer> owned = store.all(id);
+                int shown = 0;
+                for (CustomEnchant ce : CustomEnchant.ALL) {
+                    Integer n = owned.get(ce.id);
+                    if (n != null && n > 0) {
+                        sender.sendMessage(Util.color("&7- &d" + ce.name + " &8(" + ce.kind.label + ") &7x" + n));
+                        shown++;
+                    }
+                }
+                if (shown == 0) {
+                    msg(sender, "&7" + a[1] + " owns no custom enchants.");
+                }
+                break;
+            }
+            case "slots":
+            case "apply":
+            case "strip": {
+                Player p = player(sender);
+                if (p == null) {
+                    break;
+                }
+                org.bukkit.inventory.ItemStack hand = p.getInventory().getItemInMainHand();
+                ToolKind kind = ToolKind.of(hand);
+                if (kind == null) {
+                    msg(p, "&cHold a pickaxe, sword or axe in your main hand first.");
+                    break;
+                }
+                EnchantData.Info info = EnchantData.read(hand, cs.baseSlots());
+                if (sub.equals("slots")) {
+                    Integer n = a.length > 1 ? Util.parseInt(a[1]) : null;
+                    if (n == null || n < 0 || n > 9) {
+                        msg(p, "&cUsage: /enchants slots <0-9>");
+                        break;
+                    }
+                    info.slots = Math.max(n, 0);
+                    // Never drop below what's already on the tool, or its enchants would be lost.
+                    while (info.applied.size() > info.slots) {
+                        info.applied.remove(info.applied.size() - 1);
+                    }
+                    EnchantData.write(hand, info, cs.baseSlots());
+                    msg(p, "&aThis tool now has &f" + info.slots + " &acustom slot(s).");
+                } else if (sub.equals("strip")) {
+                    info.applied.clear();
+                    info.slots = cs.baseSlots();
+                    EnchantData.write(hand, info, cs.baseSlots());
+                    msg(p, "&aRemoved all custom enchants and extra slots from this tool.");
+                } else {
+                    CustomEnchant ce = a.length > 1 ? findEnchant(a[1]) : null;
+                    if (ce == null || ce.kind != kind) {
+                        msg(p, "&cUsage: /enchants apply <enchant> [level]  (it must fit a " + kind.label + ")");
+                        break;
+                    }
+                    Integer lvl = a.length > 2 ? Util.parseInt(a[2]) : Integer.valueOf(1);
+                    if (lvl == null || lvl < 1 || lvl > cs.max(ce.id)) {
+                        msg(p, "&cLevel must be 1-" + cs.max(ce.id) + ".");
+                        break;
+                    }
+                    EnchantData.Applied existing = info.find(ce.id);
+                    if (existing != null) {
+                        existing.level = lvl;
+                    } else {
+                        info.applied.add(new EnchantData.Applied(ce, lvl));
+                        info.slots = Math.max(info.slots, info.applied.size());
+                    }
+                    EnchantData.write(hand, info, cs.baseSlots());
+                    msg(p, "&aApplied &d" + ce.name + " " + EnchantData.roman(lvl) + " &ato your " + kind.label + ".");
+                }
+                p.getInventory().setItemInMainHand(hand);
+                break;
+            }
+            default:
+                msg(sender, "&cUnknown subcommand. Use /enchants for help.");
+        }
+    }
+
+    private String enchantNames() {
+        StringBuilder sb = new StringBuilder();
+        for (CustomEnchant ce : CustomEnchant.ALL) {
+            if (sb.length() > 0) {
+                sb.append("&7, &f");
+            }
+            sb.append(ce.id);
+        }
+        return sb.toString();
     }
 
     // ============================================================ /region
@@ -1004,6 +1245,9 @@ public class Commands implements CommandExecutor, TabCompleter {
                 case "resetstats":
                     opts = Arrays.asList("all");
                     break;
+                case "enchants":
+                    opts = Arrays.asList("give", "take", "list", "slots", "apply", "strip");
+                    break;
                 case "title":
                     if (sender instanceof Player) {
                         opts = new ArrayList<String>(plugin.achievements().earnedTracks((Player) sender));
@@ -1017,7 +1261,7 @@ public class Commands implements CommandExecutor, TabCompleter {
                     opts = TOP_TYPES;
                     break;
                 case "boxpvp":
-                    opts = Arrays.asList("reload", "help");
+                    opts = Arrays.asList("reload", "check", "backup", "menu", "zones", "help");
                     break;
                 default:
                     break;
@@ -1040,6 +1284,12 @@ public class Commands implements CommandExecutor, TabCompleter {
         } else if (a.length == 3 && (n.equals("rank") || n.equals("clan"))
                 && (a[0].equalsIgnoreCase("give") || a[0].equalsIgnoreCase("set"))) {
             opts = n.equals("rank") ? plugin.ranks().names() : plugin.clans().names();
+        } else if (n.equals("enchants") && ((a.length == 3 && (a[0].equalsIgnoreCase("give") || a[0].equalsIgnoreCase("take")))
+                || (a.length == 2 && a[0].equalsIgnoreCase("apply")))) {
+            opts = new ArrayList<String>();
+            for (CustomEnchant ce : CustomEnchant.ALL) {
+                opts.add(ce.id);
+            }
         } else if (a.length == 3 && n.equals("resetstats")) {
             opts = Arrays.asList("stats", "coins", "all", "confirm");
         } else if (a.length == 3 && n.equals("region") && a[0].equalsIgnoreCase("flag")) {

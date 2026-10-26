@@ -21,7 +21,7 @@ commands:
     usage: /setcoins <player> <amount>
   boxpvp:
     description: Plugin admin command
-    usage: /boxpvp <reload|help>
+    usage: /boxpvp <reload|check|backup|menu|zones|help>
   region:
     aliases: [rg]
     description: Manage regions and flags
@@ -35,6 +35,15 @@ commands:
   clan:
     description: Create and give cosmetic clan tags (admin only)
     usage: /clan <create|setprefix|delete|list|give|take|check>
+  enchants:
+    description: Admin tools for custom enchants
+    usage: /enchants <give|take|list|slots|apply|strip>
+  guide:
+    description: How the server works
+    usage: /guide
+  bounties:
+    description: See the current bounties
+    usage: /bounties
   title:
     description: Show or hide your earned achievement titles
     usage: /title [name|off]

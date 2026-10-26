@@ -376,3 +376,83 @@ custom-enchants:
       prices: [300, 900, 2500, 6000]
       chance-per-level: 20
       max-blocks: 40
+
+# ===================================================================================================
+# SERVER HEALTH, NEW PLAYERS, AND BOUNTIES
+# ===================================================================================================
+
+# Rolling backups of every data file (stats, regions, mines, pads, ranks, clans, titles, enchants, config).
+# They go into plugins/BoxPvP/backups/<date_time>/ . To restore: stop the server and copy the files back.
+# A backup is also taken every time the server starts. (Data files are also written crash-safely.)
+backups:
+  enabled: true
+  interval-minutes: 60
+  keep: 24                     # how many backup folders to keep
+
+# AFK players standing in a PvP area (and not in combat) are moved to spawn so they aren't free kills.
+# Players with the permission boxpvp.afk.bypass, and creative players, are never treated as AFK.
+afk:
+  enabled: true
+  after-seconds: 180
+  kick-after-seconds: 0        # extra seconds AFK before a kick (0 = never kick)
+
+# Damage immunity after respawning. It ends instantly if the player attacks someone.
+respawn-protection:
+  seconds: 5
+
+# Bounties: a player on a kill streak of min-streak or more carries a bounty that grows with every extra kill.
+# Whoever ends the streak collects it (on top of the normal kill coins). Check them with /bounties.
+# (If you want bounties to be the only streak-break reward, set coins.streak-break-bonus to 0.)
+bounty:
+  enabled: true
+  min-streak: 5
+  base: 50                     # bounty at min-streak
+  per-extra-kill: 25           # added for every kill beyond min-streak
+  max: 1000
+  announce-every: 5            # after the first announcement, announce again every N extra kills
+
+# /guide menu and the welcome new players get on their first join. Up to 9 topics.
+# icon = any item name. lines = what is shown (colour codes with &).
+guide:
+  first-join:
+    title: "&6&lBOX PVP"
+    subtitle: "&7Type &e/guide &7to get started"
+    messages:
+      - "&6&lWelcome to Box PvP!"
+      - "&7Mine resources, sell them, upgrade your gear and fight in the arena."
+      - "&7Type &e/guide &7any time to see how everything works."
+  topics:
+    - icon: COMPASS
+      name: "&e&lGetting started"
+      lines:
+        - "&7You respawn at spawn and keep your inventory when you die."
+        - "&7Step on a &6gold block pad &7to be carried into the arena."
+        - "&7Spawn is a safe zone - nobody can hurt you there."
+    - icon: IRON_PICKAXE
+      name: "&e&lMining and selling"
+      lines:
+        - "&7Mines drop auto-smelted resources and refill after a few seconds."
+        - "&7Better ores need a better pickaxe (stone for iron, iron for gold/diamond)."
+        - "&7Sell resources to the &bBuyer &7and buy supplies from the &6Seller &7at spawn."
+    - icon: DIAMOND_SWORD
+      name: "&e&lCombat"
+      lines:
+        - "&7Kills earn coins; streaks earn bigger rewards and put a &6bounty &7on you."
+        - "&7After you hit someone you're &ccombat-tagged&7: no /spawn and no entering safe zones."
+        - "&7Helping kill someone earns an assist. See &e/bounties&7."
+    - icon: ENCHANTED_BOOK
+      name: "&e&lUpgrades and enchants"
+      lines:
+        - "&7The &5Upgrader &7adds normal enchants to a pickaxe, sword or axe for coins."
+        - "&7The &dEnchanter &7sells random custom enchants - apply them at the Upgrader."
+        - "&7Tools have limited custom-enchant slots; you can buy more."
+    - icon: NAME_TAG
+      name: "&e&lRanks, titles and clans"
+      lines:
+        - "&7Achievement titles unlock as you mine, fight and trade. Use &e/title&7."
+        - "&7Staff give out ranks and clan tags. They show as [rank] name [clan]."
+    - icon: BOOK
+      name: "&e&lUseful commands"
+      lines:
+        - "&e/stats &7- your numbers   &e/top &7- leaderboards   &e/pay &7- send coins"
+        - "&e/title &7- your titles   &e/bounties &7- who has a bounty   &e/spawn &7- go home"

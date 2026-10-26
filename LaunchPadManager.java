@@ -117,7 +117,7 @@ public class LaunchPadManager implements Listener {
             }
         }
         try {
-            c.save(file);
+            Util.saveSafely(c, file);
         } catch (IOException e) {
             plugin.getLogger().warning("Could not save launchpads.yml: " + e.getMessage());
         }
@@ -184,6 +184,19 @@ public class LaunchPadManager implements Listener {
 
     public void endImmunity(Player p) {
         immuneUntil.remove(p.getUniqueId());
+    }
+
+    /** Damage immunity for a number of seconds (used for respawn protection). It ends early if the player attacks. */
+    public void grantImmunity(Player p, double seconds) {
+        if (seconds <= 0) {
+            endImmunity(p);
+            return;
+        }
+        immuneUntil.put(p.getUniqueId(), System.currentTimeMillis() + (long) (seconds * 1000.0));
+    }
+
+    public java.util.Collection<Pad> all() {
+        return pads.values();
     }
 
     public boolean hasNoFall(Player p) {

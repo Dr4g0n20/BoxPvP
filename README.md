@@ -111,6 +111,28 @@ The enchants show as lore on the tool (e.g. `Explosion III`). All numbers/prices
 * **Axe:** Cleave, Shield Breaker, Berserk, Hamstring, Timber
 Pickaxe enchants work on blocks in mines. Blocks mined by Explosion/Vein Miner don't count toward the ores stat by default.
 
+**Admin menu and health tools**
+* `/boxpvp menu` - an admin overview GUI: every region, mine, launch pad, NPC and dummy with its **coordinates**.
+  Left-click teleports you there; right-click on a region edits its flags (click to cycle allow/deny/unset), priority
+  and decay; on a launch pad it teleports to the landing point; on **Spawn** it sets spawn where you stand.
+  It also has Reload config, Check config and Back up now. `/boxpvp zones` prints the same overview in chat.
+* `/boxpvp check` - scans the config and your zones for mistakes (unknown items, bad enchant names, missing pad
+  landings, zones in unloaded worlds...).
+* **Backups:** every data file is copied into `plugins/BoxPvP/backups/` every hour (and at every start); the last 24
+  are kept. `/boxpvp backup` does one now. To restore, stop the server and copy a folder's files back.
+  Files are also saved crash-safely (temp file, then swap).
+* **AFK:** players idle for 3 minutes in a PvP area are moved to spawn (unless in combat). Staff/permission
+  `boxpvp.afk.bypass` and creative players are exempt.
+* **Respawn protection:** 5 seconds of damage immunity after respawning (ends the moment you attack).
+* `/enchants give|take <player> <enchant> [amount]`, `/enchants list <player>`, `/enchants slots <n>`,
+  `/enchants apply <enchant> [level]`, `/enchants strip` - admin tools for custom enchants (slots/apply/strip act on
+  the tool in your hand).
+
+**Bounties, guide and welcome**
+* A player on a kill streak of 5+ gets a bounty (50 coins, +25 per extra kill, max 1,000) announced to the server;
+  whoever ends the streak collects it. `/bounties` lists the current ones.
+* `/guide` opens a topic menu (text in the config); new players get a welcome title and message on first join.
+
 **Combat**
 * While you're combat-tagged (10s after PvP damage) a countdown shows above your hotbar.
 * You can't walk (or launch) into a no-PvP region while tagged: you're knocked back and told
